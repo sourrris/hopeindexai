@@ -1,239 +1,167 @@
-# 🌍 HopeForge: Doom vs. Bloom
+# HopeForge
 
-> **The world isn't just burning.**
->
-> A real-time global events dashboard that shows you *both sides* of the daily news — conflict and cooperation, tension and diplomacy, doom and bloom — visualised on a live world map powered by the GDELT Project.
+> The world is not just burning. It is negotiating, stabilizing, escalating, and healing in real time.
+
+HopeForge is a real-time geopolitical dashboard built with Streamlit, Folium, and the [GDELT Project](https://www.gdeltproject.org). It tracks conflict-coded and cooperation-coded events on a live dark map, classifies them into **Doom** vs **Bloom**, and surfaces a **Hope Meter** centered on the Middle East by default.
 
 [![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://share.streamlit.io/sourrrish/hopeforge)
 ![Python](https://img.shields.io/badge/python-3.11+-blue.svg)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
 ![GDELT](https://img.shields.io/badge/data-GDELT%20Project-orange.svg)
 
----
+## Premium UI Redesign - Glassmorphism + Tailwind
 
-## ✨ UI Features & Inspiration (v2 — Folium Edition)
+The current release is a full frontend redesign of the original Streamlit app. The backend logic is unchanged: it still fetches public GDELT exports, classifies events with Goldstein + QuadClass, renders the same Folium map centered on `lat=32`, `lon=40`, `zoom=5`, and preserves click-to-inspect behavior, the Hope Meter concept, the region selector, and the disabled AI placeholder.
 
-### Inspiration
+The difference is the interface:
 
-The v2 redesign draws from professional conflict-tracking interfaces:
+- A fixed glassmorphic navbar with an inline SVG HopeForge mark and live stat pills
+- A full-bleed dark Folium stage instead of a boxed Streamlit layout
+- A floating desktop control cockpit built from the native Streamlit sidebar
+- A custom Hope overlay with a circular gauge and sparkline
+- A right-side event drawer that feels like a premium dashboard instead of a default column
+- Tailwind CSS loaded via CDN for custom HTML fragments, with Streamlit widgets restyled via CSS overrides
 
-| Reference | What we borrowed |
-|---|---|
-| **ACLED** (acleddata.com) | Dark basemap, categorical marker colours, click-to-inspect panel |
-| **CFR Global Conflict Tracker** | Minimal chrome, high-density markers, persistent event sidebar |
-| **conflict.sbs** | "Both sides" framing, clean legend, news-source linking |
+### Before vs After
 
-### Before → After
-
-| Dimension | v1 (PyDeck) | v2 (Folium Edition) |
+| Area | Previous UI | Premium redesign |
 |---|---|---|
-| **Map library** | PyDeck / deck.gl | Folium + Leaflet |
-| **Base tiles** | Carto Dark Matter (WebGL) | Carto Dark Matter (Leaflet) |
-| **Doom colour** | Crimson-600 `[220,38,38]` | Deep red `#DC143C` / border `#8B0000` |
-| **Bloom colour** | Emerald-500 `[34,197,94]` | Cyan `#00CED1` / border `#00FFFF` |
-| **Marker sizing** | `NumMentions` (media coverage) | `\|GoldsteinScale\|` (event severity) |
-| **Click detection** | `on_select="rerun"` (Streamlit ≥1.30) | `st_folium` `last_object_clicked` |
-| **Event panel** | Below the map | Right-side column, always visible |
-| **Hope gauge** | Static gauge | Gauge + animated cyan pulse bar when Hope > 55% |
-| **Region focus** | Globe-centred (lat=20, lon=10) | Default Middle East (lat=32, lon=40, zoom=5) |
-| **Region nav** | — | Selectbox: Middle East / Global / Europe / Asia / Americas / Africa |
-| **AI button** | — | Disabled placeholder (wired in future PR) |
-| **Live indicator** | — | Animated blinking dot in navbar |
-| **App background** | `#0f172a` slate | `#030b18` near-black void |
-| **CSS scope** | Minimal | Full dark-system override (metrics, sidebar, iframes, buttons) |
+| Overall feel | Standard Streamlit dashboard | Dark, cinematic glass dashboard |
+| Navigation | In-page card header | Fixed top navbar with SVG branding |
+| Controls | Left sidebar | Floating glass cockpit on desktop, stacked mobile fallback |
+| Map presentation | Embedded map in a column layout | Full-bleed hero map with overlay cards |
+| Hope Meter | Plotly gauge in right column | Custom SVG gauge plus sparkline overlay |
+| Event details | Static right column card | Fixed slide-in drawer with premium CTA styling |
+| Styling approach | Handwritten CSS only | Handwritten CSS + Tailwind CDN + Streamlit overrides |
 
-### New Visual Design Choices
+### Design Notes
 
-- **Colour semantics**: Red = instability / death, Cyan = cooperation / hope — inspired by geopolitical traffic-light conventions
-- **Marker radius ∝ severity**: `abs(GoldsteinScale)` 0→10 mapped to 4→14 px — a peace deal and a massacre both have large markers; minor diplomatic notes are small dots
-- **Layered dark palette**: 5 tonal steps from `#030b18` (map bg) → `#0b1a2a` (card border) → `#162a3c` (muted text) — reduces eye strain on extended use
-- **Pulsing hope bar**: 3 px animated gradient line appears above the gauge only when Hope Score > 55%, rewarding positive data without cluttering the default view
-- **XSS-safe rendering**: all GDELT actor names and locations escaped with `html.escape()` before injecting into tooltips and cards
+- Background: deep near-black `#0A0A0A` with subtle red/cyan atmospheric gradients
+- Glass cards: `rgba(15,23,42,0.75)` with strong blur and neon borders
+- Doom accent: `#DC143C`
+- Bloom accent: `#00FFFF`
+- No new heavy frontend libraries were added; Tailwind comes from the CDN and everything else stays in the existing Python stack
 
----
+## Features
 
-## 📸 Screenshot
+- **Real-time GDELT ingestion** with cached parallel fetches
+- **Doom vs Bloom classification** using Goldstein scale with QuadClass fallback
+- **Folium dark map** with red and cyan circle markers sized by `|GoldsteinScale|`
+- **Middle East default focus** centered on the Iran-US-Israel theatre
+- **Hope Meter overlay** with score, Goldstein average, and daily sparkline
+- **Layer toggles** for Doom and Bloom
+- **Region selector** for Global, Europe, Asia, Americas, and Africa
+- **Clickable event drawer** with actor names, location, date, score, coverage, and source link
+- **AI action placeholder** preserved as a premium disabled CTA
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│  🌍 HopeForge  •  ●LIVE  •  Doom vs. Bloom — Real-time conflict tracker  │
-│  [📡 GDELT Data]  [⭐ GitHub]                                             │
-├────────────────┬────────────────┬──────────────────┬────────────────────┤
-│  📊 4,821      │  💀 2,644       │  🌱 2,177         │  🌡️ Hope 45.1%    │
-├────────────────────────────────────┬───────────────────────────────────┤
-│                                    │  🌡️ Hope Pulse                    │
-│   🗺️ Live Event Map                │  ▓▓▓░░░░░░░ 45.1%                │
-│                                    │  Avg Goldstein: –0.83             │
-│   [  CartoDB Dark Matter map  ]    ├───────────────────────────────────┤
-│   🔴 Deep red  = Doom              │  🔍 Event Details                  │
-│   🔵 Cyan      = Bloom             │  💀 MATERIAL CONFLICT              │
-│   Marker size  = |Goldstein|       │  Israel → Hamas                   │
-│                                    │  📍 Gaza Strip, Palestine          │
-│                                    │  📅 Apr 04, 2026                  │
-│                                    │  GS: –9.0 · Mentions: 847         │
-│                                    │  [📰 Read Source Article]          │
-│                                    │  [🤖 AI Analysis (coming soon)]    │
-├────────────────────────────────────┴───────────────────────────────────┤
-│  Built in one Sunday · Streamlit · Folium · Plotly · GDELT · GitHub ↗  │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## ✨ Features
-
-| Feature | Details |
-|---|---|
-| 🗺️ **Folium Map** | CartoDB Dark Matter · up to 2,000 markers · click any dot for details |
-| 🔴🔵 **Doom vs. Bloom** | Deep red (`#DC143C`) vs cyan (`#00CED1`) — Goldstein-classified |
-| 📏 **Severity sizing** | Marker radius ∝ `\|GoldsteinScale\|` (4–14 px) |
-| 🌡️ **Hope Meter** | Plotly gauge + pulsing cyan bar when Hope > 55% |
-| 🗺️ **Region focus** | Quick-nav: Middle East (default) · Global · Europe · Asia · Americas · Africa |
-| ⏱️ **Time window** | 7 / 30 / 180 days of GDELT history |
-| 🔍 **Event panel** | Actor names · location · Goldstein score · source article link |
-| 🤖 **AI button** | Disabled placeholder for future Anthropic SDK integration |
-| ⚡ **Cached** | Parallel downloads, 15-min cache TTL |
-| 🎉 **Confetti** | Balloons when hope score > 62% 🎈 |
-
----
-
-## 🚀 Quick Start (Local)
+## Quick Start
 
 ```bash
-# 1. Clone
 git clone https://github.com/sourrrish/hopeforge
 cd hopeforge
-
-# 2. Install dependencies (Python 3.11+ recommended)
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
-
-# 3. Run
 streamlit run app.py
 ```
 
-Open [http://localhost:8501](http://localhost:8501) — no API keys needed.
+Open [http://localhost:8501](http://localhost:8501).
 
----
+## Configuration
 
-## ☁️ One-Click Deploy to Streamlit Community Cloud
+The redesigned UI expects:
 
-1. Fork this repo on GitHub
-2. Go to [share.streamlit.io](https://share.streamlit.io)
-3. Click **New app** → select your fork → set main file to `app.py`
-4. Click **Deploy** — done in ~60 seconds
+- `streamlit>=1.56.0` so `st.html(..., unsafe_allow_javascript=True)` can load the Tailwind CDN
+- `.streamlit/config.toml` to keep the base theme dark under the custom CSS shell
+- no API keys for core functionality
 
-No secrets are needed for core functionality. The app fetches GDELT data directly from their public HTTP server.
+## How It Works
 
----
+### Data
 
-## 🧠 How It Works
+HopeForge reads public GDELT v2 event export snapshots. It samples 10 evenly spaced noon UTC files across the selected time window, reads a limited slice of each archive, deduplicates events by `GLOBALEVENTID`, and caches the result for 15 minutes.
 
-### Data: GDELT Project
-[GDELT](https://www.gdeltproject.org) monitors the world's broadcast, print, and web news in 100+ languages and publishes a new event export every **15 minutes**. Each row represents one news-reported interaction between two actors (countries, organisations, individuals) with rich metadata.
+### Classification
 
-HopeForge downloads a sample of these 15-minute snapshots directly via HTTP — no authentication required.
+Events are tagged as:
 
-### Classification: Goldstein Scale
-The **Goldstein Stability Scale** (–10 to +10) rates every CAMEO event code for its theoretical impact on a country's stability. HopeForge uses it as the primary signal:
+- **Bloom** when `GoldsteinScale > 0`
+- **Doom** when `GoldsteinScale <= 0`
+- **Bloom** as a fallback if Goldstein is missing and `QuadClass` is `1` or `2`
 
-| Score | Meaning | Class |
-|---|---|---|
-| > 0 | Positive stability contribution | 🌱 **Bloom** (cyan `#00CED1`) |
-| ≤ 0 | Negative or neutral | 💀 **Doom** (red `#DC143C`) |
+Marker radius still scales from `4px` to `14px` based on `abs(GoldsteinScale)`.
 
-When the Goldstein score is missing, QuadClass is used as fallback (1/2 = Bloom, 3/4 = Doom).
+### UI Composition
 
-### Marker Sizing
-In v2, marker radius is proportional to **`|GoldsteinScale|`** (event severity), not `NumMentions`. This means:
-- A ceasefire agreement (+7.4) and an artillery strike (–8.0) both render as large, attention-grabbing markers
-- Routine diplomatic consultations (+1.2) appear as small dots
+The redesign uses a layered approach:
 
-### Map: Folium + Leaflet
-Built with [Folium](https://python-visualization.github.io/folium/) (Python bindings for Leaflet.js). Two `FeatureGroup` layers share the same CartoDB Dark Matter basemap. The `streamlit-folium` bridge (`st_folium`) returns click coordinates, which are resolved to the nearest event row via Euclidean distance lookup.
+- Streamlit for app state, widgets, reruns, and layout primitives
+- Folium for the dark interactive map
+- Tailwind CDN for utility styling inside injected HTML blocks
+- Custom CSS overrides to restyle the native Streamlit sidebar and widgets
 
-### Sampling Strategy
-GDELT publishes one file every 15 minutes. For a 7-day window that's 672 files. HopeForge samples **10 evenly-spaced noon-UTC snapshots** across the window and takes the **top 1,000 events by `NumMentions`** per layer for rendering — giving a statistically representative picture without saturating bandwidth.
+## Project Structure
 
----
-
-## 📂 Project Structure
-
-```
+```text
 hopeforge/
-├── app.py                   ← entire app (single file)
+├── app.py
+├── README.md
 ├── requirements.txt
-├── .streamlit/
-│   ├── config.toml          ← dark theme + server settings
-│   └── secrets.toml         ← placeholder (no keys required)
-└── README.md
+└── .streamlit/
+    ├── config.toml
+    └── secrets.toml
 ```
 
----
+## Deployment
 
-## 🔧 Performance Notes
+### Streamlit Community Cloud
 
-- **Cold start**: ~15–25 s for initial data load (10 parallel HTTP requests)
-- **Warm**: instant (15-min TTL cache)
-- **Memory**: < 50 MB for 5,000 events
-- **Folium rendering**: 2,000 markers renders comfortably; `prefer_canvas=True` enables GPU compositing
-- **Streamlit Cloud free tier**: works fine; may cold-start after inactivity
+1. Fork the repository
+2. Create a new app at [share.streamlit.io](https://share.streamlit.io)
+3. Point it at `app.py`
+4. Deploy
 
----
+No secrets are required for the default experience.
 
-## 🗺️ Roadmap
+## Roadmap
 
-- [ ] Claude AI event summaries (Anthropic SDK — AI button placeholder already in UI)
-- [ ] Country-level aggregated heatmap view
-- [ ] Export selected events as CSV
-- [ ] Email / Slack digest bot
-- [ ] "Hope streak" counter (days since hope > 50%)
-- [ ] Animated time-lapse through the selected date range
+- Functional AI event analysis behind an optional API key
+- Country-level aggregation views
+- Export selected event windows
+- Automated digests and alerts
+- Time-lapse playback across the selected GDELT range
 
----
+## LinkedIn Post Template
 
-## 📜 Data Attribution
-
-Event data from the **[GDELT Project](https://www.gdeltproject.org)**, made available under an open license for research and journalism. HopeForge is not affiliated with GDELT. Events represent **media coverage**, not independently verified ground truth.
-
----
-
-## 🤝 Contributing
-
-PRs welcome. Keep it to one file (`app.py`). Run `streamlit run app.py` locally before submitting.
-
----
-
-## 📄 License
-
-MIT — do whatever you want, just keep the GDELT attribution.
-
----
-
-## 💼 LinkedIn Post Template
-
-> **I upgraded this in one Sunday:** HopeForge v2 🌍
+> I redesigned **HopeForge** into a premium 2026-style geopolitical dashboard.
 >
-> Rebuilt the conflict tracker from PyDeck → Folium with a full dark-system UI redesign. Now it actually looks like a pro geopolitical dashboard.
+> It still runs on the same GDELT + Streamlit backend, but the frontend now looks like a serious conflict-tracker product instead of a stock Streamlit app.
 >
-> 🔴 **Doom** = conflicts, protests, military action (Goldstein < 0)
-> 🔵 **Bloom** = peace deals, aid, cooperation, diplomacy (Goldstein > 0)
+> What changed:
+> - full glassmorphic dark UI
+> - fixed navbar with custom SVG branding
+> - full-bleed Folium map
+> - floating control cockpit
+> - custom Hope Meter with sparkline
+> - slide-in event drawer for clicked stories
 >
-> New in v2:
-> - CartoDB Dark Matter + Folium CircleMarkers
-> - Marker size ∝ event severity (|GoldsteinScale|)
-> - Click-to-inspect event panel with source article link
-> - Animated Hope Pulse gauge
-> - Middle East default view + region quick-nav
+> What did not change:
+> - same GDELT pipeline
+> - same Doom vs Bloom classification
+> - same Middle East default focus
+> - same lightweight Python stack
 >
-> Powered by the GDELT Project (100+ languages, updates every 15 min) + Streamlit + Folium + Plotly.
+> Stack: Python, Streamlit, Folium, Tailwind CDN, GDELT
 >
-> Live demo: [your-app.streamlit.app]
-> GitHub: [github.com/sourrrish/hopeforge]
+> Demo: [your-app-url]
+> Repo: [github.com/sourrrish/hopeforge](https://github.com/sourrrish/hopeforge)
 >
-> Tech stack: Python · Streamlit · Folium · Plotly · GDELT
->
-> #Python #Streamlit #DataViz #OpenData #Geopolitics #BuildInPublic
+> #Python #Streamlit #DataViz #Geopolitics #OpenData #BuildInPublic
 
----
+## Data Attribution
 
-*Built with [Claude Code](https://claude.ai/claude-code) 🤖*
+Event data comes from the **[GDELT Project](https://www.gdeltproject.org)**. HopeForge is not affiliated with GDELT. The dashboard visualizes media-reported events and should not be treated as independently verified ground truth.
+
+## License
+
+MIT
