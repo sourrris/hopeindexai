@@ -1,27 +1,29 @@
 """
-HopeForge: Doom vs. Bloom — Global Events Dashboard
-=====================================================
-Visualizes real-time GDELT world events with a balanced, hopeful lens.
-  Red  (Doom)  = conflicts, protests, military action
-  Green (Bloom) = cooperation, aid, peace, diplomacy
+HopeForge: Doom vs. Bloom — Global Events Dashboard  (Folium Edition v2)
+=========================================================================
+Professional conflict tracker inspired by CFR, ACLED, and conflict.sbs.
 
-Data:   GDELT Project (https://www.gdeltproject.org) — updates every 15 min
-Run:    streamlit run app.py
-Deploy: https://share.streamlit.io
+  💀 Doom  (deep red)  = conflicts, protests, military action  [Goldstein ≤ 0]
+  🌱 Bloom (cyan)      = cooperation, aid, peace, diplomacy    [Goldstein > 0]
+
+Data:  GDELT Project (https://www.gdeltproject.org) — updates every 15 min
+Run:   streamlit run app.py
 """
 
 from __future__ import annotations
 
 import datetime
+import html as _html
 import io
 import zipfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+import folium
 import pandas as pd
 import plotly.graph_objects as go
-import pydeck as pdk
 import requests
 import streamlit as st
+from streamlit_folium import st_folium
 
 # ─── Page config (must be the very first Streamlit call) ─────────────────────
 st.set_page_config(
@@ -32,15 +34,100 @@ st.set_page_config(
     menu_items={"About": "HopeForge — Because the world isn't just burning."},
 )
 
-# ─── Constants ────────────────────────────────────────────────────────────────
-DOOM_COLOR  = [220, 38, 38, 170]    # crimson-600
-BLOOM_COLOR = [34, 197, 94, 170]    # emerald-500
+# ─── Global CSS — dark conflict-tracker aesthetic ────────────────────────────
+st.markdown("""
+<style>
+/* ── Base ──────────────────────────────────────────── */
+html,body,[data-testid="stAppViewContainer"]{background:#030b18 !important;}
+[data-testid="stSidebar"]{background:#06101c !important;border-right:1px solid #0c1a28;}
+[data-testid="stSidebar"] section{background:#06101c !important;}
+section[data-testid="stSidebar"] *{color:#3a5e7a;}
 
-MAX_POINTS    = 5_000   # hard cap on rendered events (performance)
-CACHE_TTL     = 900     # seconds — matches GDELT's 15-min update cadence
-ROWS_PER_FILE = 1_200   # rows sampled per GDELT file download
-N_FILES       = 10      # snapshots stitched together per query
-MAP_HEIGHT    = 660     # map height in pixels
+/* ── Metric cards ──────────────────────────────────── */
+[data-testid="metric-container"]{background:#071220;border:1px solid #0b1a2a;
+border-radius:12px;padding:14px 18px !important;transition:border-color .2s;}
+[data-testid="metric-container"]:hover{border-color:#162a40;}
+[data-testid="stMetricValue"]{color:#cce0f8 !important;font-size:1.65rem !important;font-weight:800 !important;}
+[data-testid="stMetricLabel"]{color:#1e3a52 !important;font-size:.8rem !important;}
+
+/* ── Buttons ───────────────────────────────────────── */
+button[kind="primary"]{background:linear-gradient(135deg,#0a2034,#0e2e48) !important;
+border:1px solid #143854 !important;color:#4aaecc !important;}
+button[kind="primary"]:hover{background:linear-gradient(135deg,#0e2e48,#163e5c) !important;}
+a[data-testid="stLinkButton"]{background:#06101c !important;border:1px solid #0b1a2a !important;
+color:#4aaecc !important;border-radius:8px !important;}
+
+/* ── Folium iframe ─────────────────────────────────── */
+iframe{border-radius:14px !important;border:1px solid #0b1a2a !important;
+box-shadow:0 4px 30px rgba(0,0,0,.7) !important;}
+
+/* ── Navbar ────────────────────────────────────────── */
+.hf-nav{display:flex;align-items:center;justify-content:space-between;
+flex-wrap:wrap;gap:12px;
+background:linear-gradient(135deg,#020a18 0%,#050f1e 55%,#030810 100%);
+border:1px solid #0b1a2a;border-radius:18px;padding:20px 28px;margin-bottom:14px;}
+.hf-logo{font-size:clamp(1.5rem,3vw,2.4rem);font-weight:900;color:#b8d8f8;
+letter-spacing:-.03em;margin:0;}
+.hf-sub{color:#162432;font-size:.83rem;margin-top:3px;}
+.hf-links{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+.hf-a{padding:6px 14px;border-radius:8px;border:1px solid #0b2030;background:#050e1a;
+color:#2e6888;font-size:.78rem;font-weight:600;text-decoration:none;
+transition:all .15s;display:inline-block;}
+.hf-a:hover{border-color:#164860;color:#5ab4d4;background:#08162a;}
+
+/* ── Live dot ──────────────────────────────────────── */
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:.3;}}
+.live-dot{display:inline-block;width:7px;height:7px;border-radius:50%;
+background:#00CED1;margin-right:5px;animation:blink 1.8s ease-in-out infinite;
+vertical-align:middle;}
+
+/* ── Hope gauge pulse bar ──────────────────────────── */
+@keyframes hopeGlow{0%,100%{opacity:.25;}50%{opacity:1;}}
+.hope-bar{height:3px;border-radius:2px;
+background:linear-gradient(90deg,#00CED1,#00FFFF88,#00CED1);
+animation:hopeGlow 2.4s ease-in-out infinite;margin-bottom:6px;}
+
+/* ── Event detail card ─────────────────────────────── */
+.ev-card{background:#050e1a;border:1px solid #0b1a2a;border-radius:14px;
+padding:16px 20px;margin-top:6px;}
+.ev-doom {border-left:4px solid #DC143C;}
+.ev-bloom{border-left:4px solid #00CED1;}
+.ev-tag  {font-size:.7rem;font-weight:700;letter-spacing:.06em;
+text-transform:uppercase;margin-bottom:6px;}
+.ev-body {color:#b8d0e8;font-size:.95rem;margin-bottom:5px;}
+.ev-meta {color:#1e3a52;font-size:.82rem;line-height:1.9;}
+
+/* ── Section label ─────────────────────────────────── */
+.sec-lbl{color:#162a3c;font-size:.72rem;font-weight:700;
+text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px;}
+
+/* ── Footer ────────────────────────────────────────── */
+.hf-footer{color:#0e1e2c;font-size:.72rem;text-align:center;
+margin-top:20px;padding-top:12px;border-top:1px solid #050e1a;}
+.hf-footer a{color:#162840;}
+
+/* ── Sidebar overrides ─────────────────────────────── */
+div[data-testid="stCheckbox"] span{color:#2a5070 !important;}
+div[data-testid="stSelectbox"] label{color:#2a5070 !important;}
+[data-baseweb="select"]{background:#06101c !important;border-color:#0b1a2a !important;}
+[data-baseweb="select"] *{color:#3a6282 !important;}
+[data-testid="stSlider"] [data-baseweb="slider"] div{background:#163048 !important;}
+</style>
+""", unsafe_allow_html=True)
+
+
+# ─── Constants ────────────────────────────────────────────────────────────────
+DOOM_FILL   = "#DC143C"   # crimson marker fill
+DOOM_LINE   = "#8B0000"   # dark red marker border
+BLOOM_FILL  = "#00CED1"   # dark turquoise marker fill
+BLOOM_LINE  = "#00FFFF"   # cyan marker border
+
+MAX_MARKERS   = 2_000   # Folium rendering cap (1 k per layer)
+MAX_POINTS    = 5_000   # total GDELT sample cap
+CACHE_TTL     = 900     # 15-min cache matches GDELT update cadence
+ROWS_PER_FILE = 1_200
+N_FILES       = 10
+MAP_HEIGHT    = 560
 
 GDELT_BASE       = "http://data.gdeltproject.org/gdeltv2/"
 GDELT_LASTUPDATE = f"{GDELT_BASE}lastupdate.txt"
@@ -52,8 +139,20 @@ QUAD_LABELS: dict[int, str] = {
     4: "Material Conflict",
 }
 
-# ─── GDELT v2 event export schema ────────────────────────────────────────────
-# 61 tab-separated columns, no header row in the raw CSV files.
+# Region quick-nav: name → (lat, lon, zoom)
+REGIONS: dict[str, tuple[float, float, int]] = {
+    "🌍 Middle East (Default)": (32.0,  40.0, 5),
+    "🌐 Global":                (20.0,  10.0, 2),
+    "🇪🇺 Europe":              (54.0,  15.0, 4),
+    "🌏 East Asia":             (35.0, 115.0, 4),
+    "🌏 South Asia":            (22.0,  80.0, 4),
+    "🌎 Americas":              (20.0, -80.0, 3),
+    "🌍 Africa":                 (5.0,  25.0, 3),
+}
+
+
+# ─── GDELT v2 event export schema ─────────────────────────────────────────────
+# 61 tab-separated columns; no header row in the raw CSV files.
 # Full codebook: https://www.gdeltproject.org/data/documentation/GDELT-Event_Codebook-V2.0.pdf
 GDELT_COLS: list[str] = [
     "GLOBALEVENTID", "SQLDATE", "MonthYear", "Year", "FractionDate",
@@ -78,23 +177,13 @@ GDELT_COLS: list[str] = [
     "DATEADDED", "SOURCEURL",
 ]
 
-# Minimal column set forwarded to PyDeck (smaller payload = faster render)
-_MAP_COLS = [
-    "ActionGeo_Long", "ActionGeo_Lat", "radius",
-    "Actor1Name", "Actor2Name", "quad_label",
-    "GoldsteinScale", "ActionGeo_FullName",
-    "GLOBALEVENTID", "SOURCEURL", "SQLDATE", "NumMentions",
-]
-
 
 # ─── Data layer ───────────────────────────────────────────────────────────────
 
 def _gdelt_urls(days: int) -> list[str]:
     """
     Generate N_FILES GDELT v2 noon-UTC snapshot URLs evenly spread across `days`.
-
-    Strategy: sample one file per step rather than downloading every 15-min file
-    (which would be 672 files for 7 days). Keeps total download < 20 MB.
+    Samples one file per step — keeps total download < 20 MB.
     """
     today = datetime.date.today()
     step  = max(1, days // N_FILES)
@@ -115,24 +204,16 @@ def _fetch_one(url: str) -> pd.DataFrame | None:
         with zipfile.ZipFile(io.BytesIO(resp.content)) as z:
             with z.open(z.namelist()[0]) as f:
                 return pd.read_csv(
-                    f,
-                    sep="\t",
-                    header=None,
-                    names=GDELT_COLS,
-                    nrows=ROWS_PER_FILE,
-                    on_bad_lines="skip",
-                    low_memory=False,
-                    dtype=str,          # coerce to typed columns later in classify_events
+                    f, sep="\t", header=None, names=GDELT_COLS,
+                    nrows=ROWS_PER_FILE, on_bad_lines="skip",
+                    low_memory=False, dtype=str,
                 )
     except Exception:
         return None
 
 
 def _fallback_fetch() -> pd.DataFrame | None:
-    """
-    Emergency fallback: parse lastupdate.txt to get the single most-recent
-    GDELT export file and download it directly.
-    """
+    """Emergency fallback: parse lastupdate.txt for the most-recent GDELT file."""
     try:
         resp = requests.get(GDELT_LASTUPDATE, timeout=10)
         for line in resp.text.strip().splitlines():
@@ -143,32 +224,15 @@ def _fallback_fetch() -> pd.DataFrame | None:
     return None
 
 
-# ─── Alternative: official gdelt Python package ───────────────────────────────
-# pip install gdelt
-#
-# import gdelt as gdelt_pkg
-# gd = gdelt_pkg.gdelt(version=2)
-# today = datetime.date.today().strftime("%Y %b %d")
-# df = gd.Search([today, today], table="events", coverage=False)
-#
-# Notes:
-#   coverage=False → fast: fetches only the single latest 15-min file
-#   coverage=True  → slow: fetches every 15-min file in the date range
-#                          (672 files for 7 days — not suitable for a web app)
-# ─────────────────────────────────────────────────────────────────────────────
-
-
 @st.cache_data(ttl=CACHE_TTL, show_spinner=False)
 def fetch_gdelt_data(days: int) -> pd.DataFrame:
     """
-    Fetch N_FILES GDELT v2 snapshots sampled across `days`, downloaded in
-    parallel via ThreadPoolExecutor. Falls back to the latest snapshot file
-    if all sampled URLs fail (e.g. GDELT outage or old files unavailable).
+    Fetch N_FILES GDELT v2 snapshots across `days` in parallel.
+    Falls back to the latest single snapshot on failure.
     """
     urls = _gdelt_urls(days)
     dfs: list[pd.DataFrame] = []
 
-    # Parallel download — GDELT is fast on a good connection; 5 workers is safe
     with ThreadPoolExecutor(max_workers=5) as pool:
         futures = {pool.submit(_fetch_one, u): u for u in urls}
         for future in as_completed(futures):
@@ -176,7 +240,6 @@ def fetch_gdelt_data(days: int) -> pd.DataFrame:
             if result is not None and not result.empty:
                 dfs.append(result)
 
-    # Fallback if all sampled files failed (e.g. historic URLs not available)
     if not dfs:
         fallback = _fallback_fetch()
         if fallback is not None:
@@ -186,11 +249,8 @@ def fetch_gdelt_data(days: int) -> pd.DataFrame:
         return pd.DataFrame()
 
     combined = pd.concat(dfs, ignore_index=True)
-
-    # Remove duplicate events that appear in multiple 15-min snapshots
     combined = combined.drop_duplicates(subset="GLOBALEVENTID", keep="first")
 
-    # Stratified sample: preserve the doom/bloom ratio after dedup
     if len(combined) > MAX_POINTS:
         combined = combined.sample(MAX_POINTS, random_state=42)
 
@@ -199,22 +259,15 @@ def fetch_gdelt_data(days: int) -> pd.DataFrame:
 
 def classify_events(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Tag each event as 'doom' or 'bloom':
-
-      bloom → GoldsteinScale > 0  (positive global-stability contribution)
-      doom  → GoldsteinScale ≤ 0  (negative or neutral)
-
-    Fallback (when Goldstein is missing): QuadClass 1/2 → bloom, 3/4 → doom.
-    Drops events without valid ActionGeo coordinates.
+    Tag each event as 'doom' or 'bloom' by GoldsteinScale.
+    Adds `marker_r` (4–14 px) scaled by |GoldsteinScale| for Folium rendering.
     """
     if df.empty:
         return df
 
-    # Coerce raw strings to typed numeric values
     for col in ("GoldsteinScale", "QuadClass", "NumMentions", "ActionGeo_Lat", "ActionGeo_Long"):
         df[col] = pd.to_numeric(df[col], errors="coerce")
 
-    # Keep only rows with usable map coordinates
     df = df.dropna(subset=["ActionGeo_Lat", "ActionGeo_Long"])
     df = df[
         df["ActionGeo_Lat"].between(-90, 90) &
@@ -224,68 +277,151 @@ def classify_events(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
 
-    # ── Vectorised classification (no .apply() loop) ─────────────────────────
-    df["category"] = "doom"                                          # default pessimistic
+    # Vectorised classification (no .apply() loop)
+    df["category"] = "doom"
     df.loc[df["GoldsteinScale"] > 0, "category"] = "bloom"
-    no_goldstein = df["GoldsteinScale"].isna()
-    df.loc[no_goldstein & df["QuadClass"].isin([1.0, 2.0]), "category"] = "bloom"
+    no_gs = df["GoldsteinScale"].isna()
+    df.loc[no_gs & df["QuadClass"].isin([1.0, 2.0]), "category"] = "bloom"
 
-    # ── Display helpers ───────────────────────────────────────────────────────
     df["Actor1Name"] = df["Actor1Name"].fillna("Unknown").str.strip().str.title()
     df["Actor2Name"] = df["Actor2Name"].fillna("Unknown").str.strip().str.title()
     df["quad_label"] = df["QuadClass"].map(QUAD_LABELS).fillna("Unknown Event")
     df["NumMentions"] = df["NumMentions"].fillna(1).clip(lower=1).astype(int)
 
-    # Point radius: scale with media coverage (30 km base → 200 km max)
-    p95 = float(df["NumMentions"].quantile(0.95))
-    df["radius"] = (
-        (df["NumMentions"].clip(upper=p95) / max(p95, 1)) * 170_000 + 30_000
-    ).astype(int)
+    # Folium marker radius: 4–14 px proportional to |GoldsteinScale|
+    gs_abs = df["GoldsteinScale"].abs().fillna(1.0)
+    gs_p95 = float(gs_abs.quantile(0.95)) or 1.0
+    df["marker_r"] = (gs_abs.clip(upper=gs_p95) / gs_p95 * 10.0 + 4.0).round(1)
 
     return df.reset_index(drop=True)
 
 
 # ─── UI components ────────────────────────────────────────────────────────────
 
-def render_banner() -> None:
+def render_navbar() -> None:
+    """Top navbar: logo, live indicator, GDELT + GitHub links."""
     st.markdown(
-        """
-        <div style="
-            background: linear-gradient(135deg, #0f172a 0%, #1e293b 55%, #162032 100%);
-            padding: 26px 34px;
-            border-radius: 16px;
-            margin-bottom: 20px;
-            border: 1px solid #334155;
-        ">
-          <h1 style="color:#f1f5f9; margin:0;
-                     font-size:clamp(1.8rem,3.5vw,2.8rem); letter-spacing:-0.02em;">
-            🌍 HopeForge
-          </h1>
-          <p style="color:#94a3b8; margin:5px 0 0; font-size:clamp(0.9rem,1.8vw,1.1rem);">
-            <em>Doom vs. Bloom — The world isn't just burning</em>
-          </p>
-          <p style="color:#475569; margin:10px 0 0; font-size:0.82rem; line-height:1.8;">
-            Real-time global events from the
-            <a href="https://www.gdeltproject.org" target="_blank"
-               style="color:#60a5fa;">GDELT Project</a>
-            &nbsp;·&nbsp; Classified by Goldstein Stability Scale
-            &nbsp;·&nbsp; 🔴 Conflict &amp; tension
-            &nbsp;·&nbsp; 🟢 Cooperation &amp; aid
-            <br/>
-            <a href="https://github.com/your-handle/hopeforge" target="_blank"
-               style="color:#60a5fa;">⭐ Star on GitHub</a>
-            &nbsp;·&nbsp; Data refreshes every 15 min
-          </p>
-        </div>
-        """,
+        """<div class="hf-nav">
+          <div>
+            <div class="hf-logo">🌍 HopeForge</div>
+            <div class="hf-sub">
+              <span class="live-dot"></span>LIVE
+              &nbsp;·&nbsp; Doom vs. Bloom — Real-time global conflict tracker
+              &nbsp;·&nbsp; Powered by GDELT · updates every 15 min
+            </div>
+          </div>
+          <div class="hf-links">
+            <a class="hf-a" href="https://www.gdeltproject.org" target="_blank">📡 GDELT Data</a>
+            <a class="hf-a" href="https://github.com/sourrrish/hopeforge" target="_blank">⭐ GitHub</a>
+          </div>
+        </div>""",
         unsafe_allow_html=True,
     )
 
 
+def build_folium_map(
+    df: pd.DataFrame,
+    show_doom: bool,
+    show_bloom: bool,
+    center: tuple[float, float, int],
+    map_key: str,
+) -> dict:
+    """
+    Build a Folium CartoDB Dark Matter map with two CircleMarker layers.
+    Doom = deep red (#DC143C), Bloom = cyan (#00CED1).
+    Marker radius ∝ |GoldsteinScale| (4–14 px).
+    Returns the st_folium result dict for click-event handling.
+    """
+    lat, lon, zoom = center
+
+    m = folium.Map(
+        location=[lat, lon],
+        zoom_start=zoom,
+        tiles="CartoDB dark_matter",
+        prefer_canvas=True,   # GPU canvas — faster for many markers
+        control_scale=True,
+    )
+
+    doom_group  = folium.FeatureGroup(name="💀 Doom",  show=show_doom)
+    bloom_group = folium.FeatureGroup(name="🌱 Bloom", show=show_bloom)
+
+    # Prioritise high-media-coverage events within the marker cap
+    half     = MAX_MARKERS // 2
+    doom_df  = (df[df["category"] == "doom" ].nlargest(half, "NumMentions")
+                if show_doom  else pd.DataFrame())
+    bloom_df = (df[df["category"] == "bloom"].nlargest(half, "NumMentions")
+                if show_bloom else pd.DataFrame())
+
+    for frame, group, fill_c, line_c in [
+        (doom_df,  doom_group,  DOOM_FILL,  DOOM_LINE),
+        (bloom_df, bloom_group, BLOOM_FILL, BLOOM_LINE),
+    ]:
+        for t in frame.itertuples(index=False):
+            ql   = _html.escape(str(getattr(t, "quad_label",        "Event")))
+            a1   = _html.escape(str(getattr(t, "Actor1Name",         "—")))
+            a2   = _html.escape(str(getattr(t, "Actor2Name",         "—")))
+            loc  = _html.escape(str(getattr(t, "ActionGeo_FullName", "Unknown"))[:52])
+            r    = float(getattr(t, "marker_r", 5.0))
+            lat_ = float(getattr(t, "ActionGeo_Lat",  0))
+            lon_ = float(getattr(t, "ActionGeo_Long", 0))
+
+            try:
+                gs_str = f"{float(getattr(t, 'GoldsteinScale', 0) or 0):+.1f}"
+            except (TypeError, ValueError):
+                gs_str = "n/a"
+
+            tip = folium.Tooltip(
+                f"<div style='font:12px/1.6 system-ui,sans-serif;"
+                f"padding:5px 3px;min-width:190px;'>"
+                f"<b style='color:{fill_c};'>{ql}</b><br>"
+                f"<span style='color:#c0d8f0;'>{a1}"
+                f" <span style='color:#1e3448;'>→</span> {a2}</span><br>"
+                f"<span style='color:#2a4a64;'>📍 {loc}</span><br>"
+                f"<span style='color:#162a3c;'>GS {gs_str}</span>"
+                f"</div>",
+                sticky=False,
+            )
+
+            folium.CircleMarker(
+                location=[lat_, lon_],
+                radius=r,
+                color=line_c,
+                fill=True,
+                fill_color=fill_c,
+                fill_opacity=0.78,
+                weight=1.5,
+                tooltip=tip,
+            ).add_to(group)
+
+    doom_group.add_to(m)
+    bloom_group.add_to(m)
+    folium.LayerControl(collapsed=True, position="topright").add_to(m)
+
+    return st_folium(m, key=map_key, height=MAP_HEIGHT, use_container_width=True)
+
+
+def get_selected_event(map_data: dict | None, df: pd.DataFrame) -> dict | None:
+    """
+    Resolve the last-clicked marker to a df row via nearest lat/lon distance.
+    Persisted in session_state so it survives sidebar-triggered re-runs.
+    """
+    if map_data:
+        clicked = map_data.get("last_object_clicked")
+        if isinstance(clicked, dict):
+            clat = clicked.get("lat")
+            clon = clicked.get("lng")
+            if clat is not None and clon is not None:
+                dists = (df["ActionGeo_Lat"] - clat) ** 2 + (df["ActionGeo_Long"] - clon) ** 2
+                row   = df.loc[dists.idxmin()].to_dict()
+                st.session_state["_hf_ev"] = row
+
+    return st.session_state.get("_hf_ev")
+
+
 def build_hope_gauge(df: pd.DataFrame) -> tuple[go.Figure, float, float]:
     """
-    Build a Plotly gauge showing the Hope Score (% bloom events).
-    Returns: (figure, hope_pct, avg_goldstein)
+    Plotly gauge showing Hope Score (% Bloom events).
+    Returns (figure, hope_pct, avg_goldstein).
     """
     if df.empty:
         return go.Figure(), 50.0, 0.0
@@ -294,165 +430,80 @@ def build_hope_gauge(df: pd.DataFrame) -> tuple[go.Figure, float, float]:
     hope_pct = round(bloom_n / len(df) * 100, 1)
     avg_gs   = round(float(df["GoldsteinScale"].dropna().mean()), 2)
 
-    # Colour the gauge bar by how hopeful the score is
-    if hope_pct >= 55:
-        bar_col = "#22c55e"   # green
-    elif hope_pct >= 38:
-        bar_col = "#f59e0b"   # amber
-    else:
-        bar_col = "#dc2626"   # red
+    bar_col = (
+        BLOOM_FILL if hope_pct >= 55
+        else "#d4a017" if hope_pct >= 38
+        else DOOM_FILL
+    )
 
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
         value=hope_pct,
-        number={"suffix": "%", "font": {"size": 42, "color": "#f1f5f9"}},
-        title={"text": "Hope Score", "font": {"size": 15, "color": "#94a3b8"}},
+        number={"suffix": "%", "font": {"size": 38, "color": "#b8d0f0"}},
+        title={"text": "Hope Score", "font": {"size": 13, "color": "#1e3a52"}},
         gauge={
             "axis": {
-                "range": [0, 100],
-                "dtick": 25,
-                "tickcolor": "#475569",
-                "tickfont": {"color": "#64748b", "size": 10},
+                "range": [0, 100], "dtick": 25,
+                "tickcolor": "#0b1828",
+                "tickfont": {"color": "#162a3c", "size": 9},
             },
-            "bar": {"color": bar_col, "thickness": 0.20},
-            "bgcolor": "#0f172a",
-            "borderwidth": 1,
-            "bordercolor": "#334155",
+            "bar": {"color": bar_col, "thickness": 0.22},
+            "bgcolor": "#030b18",
+            "borderwidth": 1, "bordercolor": "#0b1828",
             "steps": [
-                {"range": [0,  38], "color": "rgba(220,38,38,0.15)"},
-                {"range": [38, 55], "color": "rgba(245,158,11,0.15)"},
-                {"range": [55,100], "color": "rgba(34,197,94,0.15)"},
+                {"range": [0,  38], "color": "rgba(220,20,60,.09)"},
+                {"range": [38, 55], "color": "rgba(212,160,23,.09)"},
+                {"range": [55,100], "color": "rgba(0,206,209,.09)"},
             ],
             "threshold": {
-                "line": {"color": "#f8fafc", "width": 2.5},
-                "thickness": 0.80,
-                "value": hope_pct,
+                "line": {"color": bar_col, "width": 3},
+                "thickness": 0.85, "value": hope_pct,
             },
         },
     ))
     fig.update_layout(
-        height=220,
-        margin=dict(l=18, r=18, t=28, b=4),
+        height=210,
+        margin=dict(l=14, r=14, t=26, b=4),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
     )
     return fig, hope_pct, avg_gs
 
 
-def render_map(df: pd.DataFrame, show_doom: bool, show_bloom: bool):
+def render_event_card(event: dict | None) -> None:
     """
-    Build and render a PyDeck ScatterplotLayer world map.
-
-    Two layers: 'doom' (red) and 'bloom' (green), each independently togglable.
-    Uses Carto Dark Matter map style — no Mapbox token required.
-    on_select="rerun" triggers a Streamlit rerun on click, populating
-    event.selection.objects with the clicked row's data.
+    Right-side event detail card.
+    Shows actor names, location, date, Goldstein score, source link,
+    and a disabled AI-analysis button (placeholder for future integration).
     """
-    tooltip = {
-        "html": (
-            "<div style='background:#1e293b; padding:10px 14px; border-radius:10px;"
-            "border:1px solid #334155; font-family:system-ui,sans-serif; font-size:12px;'>"
-            "<b style='color:#f1f5f9;'>{Actor1Name}</b>"
-            "<span style='color:#475569;'> → </span>"
-            "<b style='color:#f1f5f9;'>{Actor2Name}</b><br/>"
-            "<span style='color:#94a3b8;'>{quad_label}</span><br/>"
-            "<span style='color:#64748b;'>📍 {ActionGeo_FullName}</span><br/>"
-            "<span style='color:#94a3b8;'>Goldstein: <b>{GoldsteinScale}</b>"
-            "&ensp;·&ensp;Mentions: <b>{NumMentions}</b></span>"
-            "</div>"
-        ),
-        "style": {"backgroundColor": "transparent"},
-    }
-
-    layers: list[pdk.Layer] = []
-
-    for cat, color, layer_id, show in [
-        ("doom",  DOOM_COLOR,  "doom",  show_doom),
-        ("bloom", BLOOM_COLOR, "bloom", show_bloom),
-    ]:
-        if not show:
-            continue
-        sub = df[df["category"] == cat].copy()
-        if sub.empty:
-            continue
-        # Ensure all expected columns exist before handing to PyDeck
-        for col in _MAP_COLS:
-            if col not in sub.columns:
-                sub[col] = None
-        layers.append(pdk.Layer(
-            "ScatterplotLayer",
-            id=layer_id,              # used as key in event.selection.objects
-            data=sub[_MAP_COLS],
-            get_position=["ActionGeo_Long", "ActionGeo_Lat"],
-            get_fill_color=color,
-            get_radius="radius",
-            radius_scale=1,
-            radius_min_pixels=3,      # always visible even when zoomed out
-            radius_max_pixels=18,     # cap size to prevent giant blobs
-            pickable=True,
-            auto_highlight=True,
-            highlight_color=[255, 255, 255, 90],
-        ))
-
-    deck = pdk.Deck(
-        layers=layers,
-        initial_view_state=pdk.ViewState(
-            latitude=20, longitude=10, zoom=1.3,
-            min_zoom=0.5, max_zoom=12,
-        ),
-        map_style="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
-        tooltip=tooltip,
-    )
-
-    return st.pydeck_chart(
-        deck,
-        on_select="rerun",              # rerun the script on click, pass selection state
-        selection_mode="single-object", # only one event selected at a time
-        height=MAP_HEIGHT,
-        use_container_width=True,
-    )
-
-
-def render_event_panel(event) -> None:
-    """
-    Show metadata for the last clicked map event.
-    `event` is the PydeckState returned by st.pydeck_chart (Streamlit ≥ 1.30).
-    event.selection.objects is a dict[layer_id, list[row_dict]].
-    """
-    selected: dict | None = None
-
-    try:
-        objects = event.selection.objects          # e.g. {"doom": [{...}]}
-        for layer_id in ("doom", "bloom"):
-            rows = objects.get(layer_id) or []
-            if rows:
-                selected = rows[0]
-                break
-    except (AttributeError, TypeError, KeyError):
-        pass
-
-    if selected is None:
+    if event is None:
         st.markdown(
-            "<p style='color:#475569; text-align:center; padding:16px;'>"
-            "👆 Click any dot on the map to see event details"
-            "</p>",
+            "<div class='ev-card' style='text-align:center;color:#162a3c;padding:22px 16px;'>"
+            "👆 Click any marker on the map to inspect the event"
+            "</div>",
             unsafe_allow_html=True,
         )
         return
 
-    # ── Determine display colour from Goldstein ───────────────────────────────
-    gs_raw = selected.get("GoldsteinScale")
+    gs_raw = event.get("GoldsteinScale")
     try:
         gs = float(gs_raw)
     except (TypeError, ValueError):
         gs = None
 
     is_bloom = gs is not None and gs > 0
-    accent   = "#22c55e" if is_bloom else "#dc2626"
+    fill_c   = BLOOM_FILL if is_bloom else DOOM_FILL
+    card_cls = "ev-bloom" if is_bloom else "ev-doom"
     icon     = "🌱" if is_bloom else "💀"
 
-    # ── Parse SQLDATE YYYYMMDD → human-readable ───────────────────────────────
-    raw_date = selected.get("SQLDATE", "")
+    ql       = _html.escape(str(event.get("quad_label",        "Event")))
+    a1       = _html.escape(str(event.get("Actor1Name",         "—")))
+    a2       = _html.escape(str(event.get("Actor2Name",         "—")))
+    loc      = _html.escape(str(event.get("ActionGeo_FullName", "Unknown location")))
+    mentions = event.get("NumMentions", "—")
+    gs_str   = f"{gs:+.1f}" if gs is not None else "N/A"
+
+    raw_date = event.get("SQLDATE", "")
     try:
         fmt_date = datetime.datetime.strptime(
             str(int(float(raw_date))), "%Y%m%d"
@@ -461,32 +512,29 @@ def render_event_panel(event) -> None:
         fmt_date = str(raw_date)
 
     st.markdown(
-        f"""
-        <div style="background:#1e293b; padding:18px 22px; border-radius:14px;
-                    border-left:4px solid {accent}; margin-bottom:12px;">
-          <div style="color:{accent}; font-size:0.8rem; font-weight:700;
-                      letter-spacing:0.06em; text-transform:uppercase; margin-bottom:8px;">
-            {icon} {selected.get("quad_label", "Event")}
+        f"""<div class="ev-card {card_cls}">
+          <div class="ev-tag" style="color:{fill_c};">{icon} {ql}</div>
+          <div class="ev-body">
+            <b>{a1}</b>
+            <span style="color:#162030;"> → </span>
+            <b>{a2}</b>
           </div>
-          <div style="color:#f1f5f9; font-size:1rem; margin-bottom:6px;">
-            <b>{selected.get("Actor1Name", "—")}</b>
-            <span style="color:#475569;"> → </span>
-            <b>{selected.get("Actor2Name", "—")}</b>
+          <div class="ev-meta">
+            📍 {loc}<br>
+            📅 {fmt_date}<br>
+            Goldstein: <b style="color:{fill_c};">{gs_str}</b>
+            &ensp;·&ensp; Mentions: <b>{mentions}</b>
           </div>
-          <div style="color:#94a3b8; font-size:0.875rem; line-height:2.0;">
-            📍 {selected.get("ActionGeo_FullName", "Unknown location")}<br/>
-            📅 {fmt_date}<br/>
-            Goldstein Scale: <b style="color:{accent};">{gs if gs is not None else "N/A"}</b>
-            &ensp;·&ensp; Mentions: <b>{selected.get("NumMentions", "—")}</b>
-          </div>
-        </div>
-        """,
+        </div>""",
         unsafe_allow_html=True,
     )
 
-    src = selected.get("SOURCEURL", "")
+    src = event.get("SOURCEURL", "")
     if isinstance(src, str) and src.startswith("http"):
         st.link_button("📰 Read Source Article", src, use_container_width=True)
+
+    # AI analysis placeholder — wired to Anthropic SDK in a future PR
+    st.button("🤖 AI Analysis  (coming soon)", disabled=True, use_container_width=True)
 
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
@@ -495,37 +543,95 @@ def main() -> None:
 
     # ── Sidebar ──────────────────────────────────────────────────────────────
     with st.sidebar:
-        st.markdown("## ⚙️ Controls")
-
-        days = st.select_slider(
-            "Time window",
-            options=[7, 30, 180],
-            value=7,
-            format_func=lambda x: f"Last {x} days",
-            help=(
-                f"Samples {N_FILES} GDELT snapshots evenly across the window. "
-                "Wider windows show longer-term patterns at slightly lower density."
-            ),
+        st.markdown(
+            "<div style='color:#1a3a52;font-size:.72rem;font-weight:700;"
+            "text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;'>"
+            "⚙️ Controls</div>",
+            unsafe_allow_html=True,
         )
 
-        st.markdown("---")
-        st.markdown("**Event layers**")
-        show_doom  = st.checkbox("💀 Doom  (conflict / tension)", value=True)
-        show_bloom = st.checkbox("🌱 Bloom (cooperation / aid)",  value=True)
+        # ── Time window ───────────────────────────────────────────────────────
+        st.markdown(
+            "<div style='color:#162c42;font-size:.7rem;margin-bottom:3px;'>"
+            "⏱ TIME WINDOW</div>",
+            unsafe_allow_html=True,
+        )
+        days = st.select_slider(
+            "time_window",
+            options=[7, 30, 180],
+            value=st.session_state.get("days", 7),
+            format_func=lambda x: f"Last {x} days",
+            label_visibility="collapsed",
+            help=f"Samples {N_FILES} GDELT snapshots evenly across the window.",
+        )
+        st.session_state["days"] = days
 
-        st.markdown("---")
+        st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
+
+        # ── Region focus ──────────────────────────────────────────────────────
+        st.markdown(
+            "<div style='color:#162c42;font-size:.7rem;margin-bottom:3px;'>"
+            "🗺️ REGION FOCUS</div>",
+            unsafe_allow_html=True,
+        )
+        region_name = st.selectbox(
+            "Region",
+            options=list(REGIONS.keys()),
+            index=0,
+            label_visibility="collapsed",
+        )
+        center = REGIONS[region_name]
+
+        st.markdown(
+            "<hr style='border:none;border-top:1px solid #0b1a28;margin:10px 0;'>",
+            unsafe_allow_html=True,
+        )
+
+        # ── Layer toggles ─────────────────────────────────────────────────────
+        st.markdown(
+            "<div style='color:#162c42;font-size:.7rem;margin-bottom:5px;'>"
+            "🔘 EVENT LAYERS</div>",
+            unsafe_allow_html=True,
+        )
+        show_doom  = st.checkbox("💀 Doom  (conflict · tension)", value=True)
+        show_bloom = st.checkbox("🌱 Bloom (cooperation · aid)",  value=True)
+
+        st.markdown(
+            "<hr style='border:none;border-top:1px solid #0b1a28;margin:10px 0;'>",
+            unsafe_allow_html=True,
+        )
+
+        # ── Legend ────────────────────────────────────────────────────────────
+        st.markdown(
+            "<div style='background:#040c18;border:1px solid #0a1826;border-radius:10px;"
+            "padding:10px 13px;'>"
+            "<div style='color:#162840;font-size:.68rem;font-weight:700;text-transform:uppercase;"
+            "letter-spacing:.05em;margin-bottom:7px;'>Map Legend</div>"
+            "<div style='font-size:.78rem;line-height:2.2;color:#1e3a52;'>"
+            "<span style='display:inline-block;width:9px;height:9px;border-radius:50%;"
+            "background:#DC143C;margin-right:6px;vertical-align:middle;'></span>"
+            "Doom — GoldsteinScale ≤ 0<br>"
+            "<span style='display:inline-block;width:9px;height:9px;border-radius:50%;"
+            "background:#00CED1;margin-right:6px;vertical-align:middle;'></span>"
+            "Bloom — GoldsteinScale > 0<br>"
+            "<span style='color:#0e1e2c;font-size:.68rem;'>Marker size ∝ |Goldstein|</span>"
+            "</div></div>",
+            unsafe_allow_html=True,
+        )
+
+        st.markdown("<div style='height:12px;'></div>", unsafe_allow_html=True)
+
         if st.button("🔄 Refresh Data", use_container_width=True, type="primary"):
             st.cache_data.clear()
             st.session_state.pop("confetti_shown", None)
+            st.session_state.pop("_hf_ev", None)
+            st.session_state.pop("_hf_map_key", None)
             st.rerun()
 
         st.caption(
-            f"Cache: {CACHE_TTL // 60} min &nbsp;·&nbsp; "
+            f"Cache {CACHE_TTL // 60} min &nbsp;·&nbsp; "
             f"[GDELT Project](https://www.gdeltproject.org)"
         )
-
-    # ── Banner ────────────────────────────────────────────────────────────────
-    render_banner()
 
     # ── Fetch + classify data ─────────────────────────────────────────────────
     with st.spinner("🌐 Fetching global events from GDELT…"):
@@ -534,7 +640,7 @@ def main() -> None:
     if raw_df.empty:
         st.error(
             "⚠️ Could not retrieve GDELT data. The server may be temporarily unavailable. "
-            "Please try refreshing, or visit [gdeltproject.org](https://www.gdeltproject.org)."
+            "Try refreshing, or visit [gdeltproject.org](https://www.gdeltproject.org)."
         )
         if st.button("↩️ Retry"):
             st.cache_data.clear()
@@ -544,64 +650,85 @@ def main() -> None:
     df = classify_events(raw_df)
 
     if df.empty:
-        st.warning(
-            "Data loaded but no events with valid coordinates. "
-            "Try a different time window."
-        )
+        st.warning("Data loaded but no events with valid coordinates. Try a wider time window.")
         return
 
     doom_n   = int((df["category"] == "doom").sum())
     bloom_n  = int((df["category"] == "bloom").sum())
     hope_pct = round(bloom_n / len(df) * 100, 1)
 
-    # 🎉 Trigger confetti on unusually hopeful periods (once per session)
+    # 🎉 Balloons on unusually hopeful periods (once per session)
     if hope_pct > 62 and "confetti_shown" not in st.session_state:
         st.balloons()
         st.session_state["confetti_shown"] = True
 
-    # ── Stats row ─────────────────────────────────────────────────────────────
+    # Reset event selection when region or time window changes
+    current_ctx = f"{region_name}|{days}"
+    if st.session_state.get("_hf_map_key") != current_ctx:
+        st.session_state.pop("_hf_ev", None)
+        st.session_state["_hf_map_key"] = current_ctx
+
+    # ── Navbar ────────────────────────────────────────────────────────────────
+    render_navbar()
+
+    # ── Stats strip ───────────────────────────────────────────────────────────
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("📊 Events",   f"{len(df):,}")
-    c2.metric("💀 Doom",     f"{doom_n:,}")
-    c3.metric("🌱 Bloom",    f"{bloom_n:,}")
-    c4.metric("🌡️ Hope",     f"{hope_pct}%")
+    c1.metric("📊 Events",  f"{len(df):,}")
+    c2.metric("💀 Doom",    f"{doom_n:,}")
+    c3.metric("🌱 Bloom",   f"{bloom_n:,}")
+    c4.metric("🌡️ Hope",   f"{hope_pct}%")
 
-    st.markdown("")  # vertical spacer
+    st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
 
-    # ── Map (3 parts) + Hope gauge (1 part) ──────────────────────────────────
-    map_col, gauge_col = st.columns([3, 1], gap="medium")
+    # ── Map (3 parts) + right panel (2 parts) ────────────────────────────────
+    map_col, right_col = st.columns([3, 2], gap="medium")
 
     with map_col:
-        st.markdown("### 🗺️ Live Event Map")
-        selection = render_map(df, show_doom, show_bloom)
+        st.markdown(
+            f"<div class='sec-lbl'>🗺️ Live Event Map"
+            f" <span style='color:#0e1e2c;'>— top {MAX_MARKERS:,} events by media coverage</span>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+        map_key  = f"hf_{region_name}_{days}"
+        map_data = build_folium_map(df, show_doom, show_bloom, center, map_key)
+        selected = get_selected_event(map_data, df)
 
-    with gauge_col:
-        st.markdown("### 🌡️ Hope Pulse")
+    with right_col:
+        # ── Hope Gauge ────────────────────────────────────────────────────────
+        st.markdown("<div class='sec-lbl'>🌡️ Hope Pulse</div>", unsafe_allow_html=True)
+
+        if hope_pct > 55:
+            # Animated cyan pulse bar — signals an unusually hopeful period
+            st.markdown("<div class='hope-bar'></div>", unsafe_allow_html=True)
+
         fig, _, avg_gs = build_hope_gauge(df)
         st.plotly_chart(fig, use_container_width=True)
 
-        gs_color = "#22c55e" if avg_gs >= 0 else "#dc2626"
+        gs_color = BLOOM_FILL if avg_gs >= 0 else DOOM_FILL
         st.markdown(
-            f"<div style='text-align:center; padding:10px; background:#1e293b;"
-            f"border-radius:10px; border:1px solid #334155; margin-top:-8px;'>"
-            f"<div style='color:#64748b; font-size:0.75rem;'>Avg Goldstein</div>"
-            f"<div style='color:{gs_color}; font-size:1.5rem; font-weight:700;'>{avg_gs:+.2f}</div>"
-            f"<div style='color:#475569; font-size:0.7rem;'>–10 (war) → +10 (peace)</div>"
+            f"<div style='text-align:center;padding:8px 12px;background:#040c18;"
+            f"border-radius:10px;border:1px solid #0a1826;"
+            f"margin-top:-12px;margin-bottom:14px;'>"
+            f"<div style='color:#162840;font-size:.7rem;'>Avg Goldstein Scale</div>"
+            f"<div style='color:{gs_color};font-size:1.4rem;font-weight:800;'>{avg_gs:+.2f}</div>"
+            f"<div style='color:#0c1826;font-size:.66rem;'>–10 full war → +10 full peace</div>"
             f"</div>",
             unsafe_allow_html=True,
         )
 
-    # ── Event detail panel ────────────────────────────────────────────────────
-    st.markdown("---")
-    st.markdown("### 🔍 Event Details")
-    render_event_panel(selection)
+        # ── Event Details ─────────────────────────────────────────────────────
+        st.markdown("<div class='sec-lbl'>🔍 Event Details</div>", unsafe_allow_html=True)
+        render_event_card(selected)
 
     # ── Footer ────────────────────────────────────────────────────────────────
     st.markdown(
-        "<div style='color:#334155; font-size:0.75rem; text-align:center; margin-top:28px;'>"
-        "Built with Streamlit · GDELT · PyDeck · Plotly"
-        "&nbsp;·&nbsp; HopeForge is not affiliated with the GDELT Project"
-        "&nbsp;·&nbsp; Events represent media coverage, not ground truth"
+        "<div class='hf-footer'>"
+        "Built in one Sunday"
+        " &nbsp;·&nbsp; Streamlit · Folium · Plotly · GDELT"
+        " &nbsp;·&nbsp; "
+        "<a href='https://github.com/sourrrish/hopeforge' target='_blank'>GitHub ↗</a>"
+        " &nbsp;·&nbsp; Events represent media coverage, not verified ground truth"
         "</div>",
         unsafe_allow_html=True,
     )
