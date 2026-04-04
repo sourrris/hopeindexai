@@ -149,6 +149,7 @@ def inject_global_styles() -> None:
           --hf-radius-lg: 22px;
           --hf-bloom-glow: 0 0 36px rgba(0, 255, 255, 0.24);
           --hf-doom-glow: 0 0 30px rgba(220, 20, 60, 0.18);
+          --hf-cockpit-width: 360px;
         }
 
         /* Base shell: hide Streamlit chrome and build a dark atmospheric stage. */
@@ -185,8 +186,8 @@ def inject_global_styles() -> None:
           right: 1.25rem !important;
           left: auto !important;
           bottom: 1.25rem !important;
-          width: min(360px, calc(100vw - 2.5rem)) !important;
-          min-width: min(360px, calc(100vw - 2.5rem)) !important;
+          width: min(var(--hf-cockpit-width), calc(100vw - 2.5rem)) !important;
+          min-width: min(var(--hf-cockpit-width), calc(100vw - 2.5rem)) !important;
           background: var(--hf-panel) !important;
           border: 1px solid var(--hf-border-neon) !important;
           border-radius: var(--hf-radius-xl) !important;
@@ -195,6 +196,11 @@ def inject_global_styles() -> None:
           -webkit-backdrop-filter: blur(18px) saturate(140%) !important;
           overflow: hidden !important;
           z-index: 50 !important;
+        }
+
+        [data-testid="stSidebarResizeHandle"],
+        section[data-testid="stSidebar"] [role="separator"] {
+          display: none !important;
         }
 
         section[data-testid="stSidebar"] > div,
@@ -219,7 +225,11 @@ def inject_global_styles() -> None:
 
         [data-testid="stSidebar"] label,
         [data-testid="stSidebar"] p,
-        [data-testid="stSidebar"] span {
+        [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] span,
+        [data-testid="stSidebar"] [data-baseweb="checkbox"] span,
+        [data-testid="stSidebar"] [data-baseweb="select"] span,
+        [data-testid="stSidebar"] .stSelectbox span,
+        [data-testid="stSidebar"] .stSlider span {
           color: var(--hf-text) !important;
         }
 
@@ -657,9 +667,10 @@ def inject_global_styles() -> None:
         }
 
         .hf-event-drawer {
-          right: 1.25rem;
+          right: calc(var(--hf-cockpit-width) + 2.5rem);
           bottom: 1.25rem;
-          width: min(360px, calc(100vw - 2.5rem));
+          width: min(340px, calc(100vw - var(--hf-cockpit-width) - 4rem));
+          min-width: 300px;
           max-height: min(420px, calc(100vh - 31rem));
           transform: translateX(110%);
           opacity: 0;
