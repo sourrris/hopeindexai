@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { unzipSync } from "fflate";
+import { inflateRawSync } from "node:zlib";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -214,6 +214,23 @@ function fmtDate(s: string): string {
   return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
 }
 
+// Minimal ZIP extractor — reads the first file entry using Node.js built-in zlib.
+// GDELT exports are single-entry ZIP files compressed with deflate (method 8).
+function unzipFirst(buf: Buffer): Buffer {
+  if (buf.readUInt32LE(0) !== 0x04034b50) throw new Error("Not a ZIP file");
+  const compression = buf.readUInt16LE(8);
+  const compSize    = buf.readUInt32LE(18);
+  const nameLen     = buf.readUInt16LE(26);
+  const extraLen    = buf.readUInt16LE(28);
+  const dataStart   = 30 + nameLen + extraLen;
+  const compressed  = compSize > 0
+    ? buf.subarray(dataStart, dataStart + compSize)
+    : buf.subarray(dataStart);
+  if (compression === 0) return compressed;           // stored
+  if (compression === 8) return inflateRawSync(compressed); // deflate
+  throw new Error(`Unsupported ZIP method: ${compression}`);
+}
+
 async function fetchOne(url: string): Promise<GdeltEvent[]> {
   try {
     const res = await fetch(url, {
@@ -221,12 +238,9 @@ async function fetchOne(url: string): Promise<GdeltEvent[]> {
     });
     if (!res.ok) return [];
 
-    const buf = await res.arrayBuffer();
-    const unzipped = unzipSync(new Uint8Array(buf));
-    const csvBytes = Object.values(unzipped)[0];
-    if (!csvBytes) return [];
-
-    const text = new TextDecoder().decode(csvBytes);
+    const buf = Buffer.from(await res.arrayBuffer());
+    const csvBytes = unzipFirst(buf);
+    const text = csvBytes.toString("utf8");
     const lines = text.split("\n");
 
     const events: GdeltEvent[] = [];

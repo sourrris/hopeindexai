@@ -7,11 +7,11 @@
   },
   "scripts": {
     "dev": "bun --watch server.ts",
-    "start": "bun server.ts"
+    "start": "bun server.ts",
+    "test:vercel": "bun test-handler.mjs"
   },
   "dependencies": {
-    "hono": "^4",
-    "fflate": "^0.8"
+    "hono": "^4"
   },
   "devDependencies": {
     "@types/bun": "latest"
