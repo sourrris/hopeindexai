@@ -587,6 +587,12 @@ function App() {
         )}
       </main>
 
+      <footer className="app-footer">
+        <a href={GITHUB_URL + "#ai-analysis"} target="_blank" rel="noopener noreferrer">
+          AI analysis — setup guide →
+        </a>
+      </footer>
+
       {loading && <LoadingOverlay slow={slowLoad} />}
       {error    && <ErrorToast message={error} onDismiss={() => setError("")} />}
     </>
