@@ -149,7 +149,7 @@ const FIPS_CONTINENT: Record<string, string> = {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const GDELT_BASE = "http://data.gdeltproject.org/gdeltv2/";
+const GDELT_BASE = "https://data.gdeltproject.org/gdeltv2/";
 const MAX_POINTS = 1_500;
 const ROWS_PER_FILE = 1_200;
 const N_FILES = 10;
