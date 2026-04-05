@@ -150,7 +150,7 @@ const FIPS_CONTINENT: Record<string, string> = {
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const GDELT_BASE = "http://data.gdeltproject.org/gdeltv2/";
-const MAX_POINTS = 5_000;
+const MAX_POINTS = 1_500;
 const ROWS_PER_FILE = 1_200;
 const N_FILES = 10;
 const CACHE_TTL = 15 * 60 * 1_000; // 15 minutes
@@ -188,8 +188,8 @@ function getSeverity(g: number | null): GdeltEvent["severity"] {
 }
 
 function getRadius(g: number | null): number {
-  if (g === null) return 4;
-  return Math.min(14, Math.max(4, 4 + Math.abs(g)));
+  if (g === null) return 2;
+  return Math.min(7, Math.max(2, 2 + Math.abs(g) * 0.5));
 }
 
 function fmtDate(s: string): string {
@@ -303,6 +303,11 @@ app.get("/app.js", async (c) => {
   return c.body(js);
 });
 
+// AI availability — tells the frontend whether a server-side key is configured
+app.get("/api/ai-status", (c) => {
+  return c.json({ ready: Boolean(ENV_API_KEY) });
+});
+
 // GDELT data endpoint
 app.get("/api/events", async (c) => {
   const days = Math.max(1, Math.min(30, parseInt(c.req.query("days") ?? "7", 10)));
@@ -324,37 +329,83 @@ app.get("/api/events", async (c) => {
   }
 });
 
-// AI analysis endpoint — user-provided Anthropic key, never stored
+// AI analysis endpoint — key resolved from env, then request body
+const ENV_API_KEY = process.env.ANTHROPIC_API_KEY ?? "";
+
 app.post("/api/analyze", async (c) => {
-  let body: { apiKey?: string; events?: GdeltEvent[] };
+  let body: { apiKey?: string; events?: GdeltEvent[]; mode?: string };
   try {
     body = await c.req.json();
   } catch {
     return c.json({ error: "Invalid request body" }, 400);
   }
 
-  const { apiKey, events } = body;
-  if (!apiKey || typeof apiKey !== "string" || !apiKey.startsWith("sk-ant")) {
-    return c.json({ error: "A valid Anthropic API key is required" }, 400);
+  const { apiKey: clientKey, events, mode } = body;
+  // Prefer client-supplied key (session override); fall back to server env key
+  const apiKey = (typeof clientKey === "string" && clientKey.startsWith("sk-ant"))
+    ? clientKey
+    : ENV_API_KEY;
+
+  if (!apiKey) {
+    return c.json({
+      error: "No Anthropic API key configured. Add ANTHROPIC_API_KEY to your .env file — see the setup guide in the README.",
+    }, 400);
   }
   if (!Array.isArray(events) || events.length === 0) {
     return c.json({ error: "No events provided" }, 400);
   }
 
-  const top = events.slice(0, 50);
-  const lines = top.map(
-    (e) =>
-      `[${e.date}] ${e.category.toUpperCase()} | ${e.quadLabel} | ` +
-      `${e.actor1} → ${e.actor2} | ${e.location} | ` +
-      `Goldstein: ${e.goldstein?.toFixed(1) ?? "n/a"} | Mentions: ${e.numMentions}`
-  );
+  const SYSTEM_PROMPT =
+    `You are a senior international geopolitical analyst with deep expertise in global ` +
+    `economics, regional security, and cross-cultural dynamics. Your assessments are ` +
+    `precise, evidence-based, and free from political or ideological bias. ` +
+    `When analyzing events you consider: (1) the immediate geopolitical context and ` +
+    `the actors involved, (2) economic ripple effects — trade flows, market exposure, ` +
+    `sanctions risk, supply chains, (3) cultural and humanitarian dimensions, ` +
+    `(4) cascading consequences for neighboring regions and the broader international ` +
+    `order, and (5) escalation or de-escalation signals. Be concise, direct, and ` +
+    `analytically rigorous. Avoid speculation beyond what the data supports.`;
 
-  const prompt =
-    `You are a geopolitical analyst reviewing real-time data from the GDELT Project. ` +
-    `Analyze the following ${top.length} events (filtered from ${events.length} total) ` +
-    `and deliver a concise intelligence briefing. Identify key patterns, escalation risks, ` +
-    `areas of cooperation, and notable regional dynamics. Be precise and factual.\n\n` +
-    `Events:\n${lines.join("\n")}\n\nBriefing:`;
+  let userPrompt: string;
+
+  if (mode === "detail" && events.length === 1) {
+    const e = events[0];
+    const actors = e.actor1 !== "Unknown"
+      ? `${e.actor1}${e.actor2 !== "Unknown" ? ` → ${e.actor2}` : ""}`
+      : "Unknown actors";
+
+    userPrompt =
+      `Analyze the following geopolitical event reported by GDELT:\n\n` +
+      `Type: ${e.category === "doom" ? "Conflict / Hostile Action" : "Cooperation / Positive Engagement"}\n` +
+      `Classification: ${e.quadLabel}\n` +
+      `Actors: ${actors}\n` +
+      `Location: ${e.location || e.country}\n` +
+      `Date: ${e.date}\n` +
+      `Goldstein Scale: ${e.goldstein !== null ? e.goldstein.toFixed(1) : "n/a"} (range −10 to +10)\n` +
+      `Severity: ${e.severity}\n` +
+      `Media Coverage: ${e.numMentions} mentions\n` +
+      `Average Tone: ${e.avgTone !== null ? e.avgTone.toFixed(2) : "n/a"}\n` +
+      (e.sourceUrl ? `Source: ${e.sourceUrl}\n` : "") +
+      `\nProvide a structured briefing covering:\n` +
+      `1. Immediate significance and context\n` +
+      `2. Economic implications — trade, markets, investment exposure\n` +
+      `3. Cultural and humanitarian dimensions\n` +
+      `4. Regional and global ripple effects\n` +
+      `5. Escalation or resolution outlook\n\nAnalysis:`;
+  } else {
+    const top = events.slice(0, 50);
+    const lines = top.map(
+      (e) =>
+        `[${e.date}] ${e.category.toUpperCase()} | ${e.quadLabel} | ` +
+        `${e.actor1} → ${e.actor2} | ${e.location} | ` +
+        `Goldstein: ${e.goldstein?.toFixed(1) ?? "n/a"} | Mentions: ${e.numMentions}`
+    );
+    userPrompt =
+      `Analyze the following ${top.length} events (from ${events.length} total) from the ` +
+      `GDELT Project and deliver a concise global intelligence briefing. Identify key ` +
+      `patterns, escalation clusters, areas of cooperation, and notable regional dynamics.\n\n` +
+      `Events:\n${lines.join("\n")}\n\nBriefing:`;
+  }
 
   try {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -367,7 +418,8 @@ app.post("/api/analyze", async (c) => {
       body: JSON.stringify({
         model: "claude-sonnet-4-6",
         max_tokens: 1_024,
-        messages: [{ role: "user", content: prompt }],
+        system: SYSTEM_PROMPT,
+        messages: [{ role: "user", content: userPrompt }],
       }),
       signal: AbortSignal.timeout(30_000),
     });

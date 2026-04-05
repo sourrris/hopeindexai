@@ -33,11 +33,11 @@
       --shadow-md:   0 4px 32px rgba(0,0,0,0.10);
       --shadow-lg:   0 8px 48px rgba(0,0,0,0.14);
 
-      --doom-hi:     #7C0A1A;
-      --doom-mid:    #DC143C;
-      --doom-lo:     #FF6B35;
+      --doom-hi:     #FF1A1A;
+      --doom-mid:    #FF7A00;
+      --doom-lo:     #FFBE00;
       --bloom:       #06B6D4;
-      --bloom-br:    #00E5FF;
+      --bloom-br:    #22C55E;
       --live:        #22C55E;
     }
 
@@ -239,10 +239,10 @@
       text-transform: uppercase; padding: 1px 5px; border-radius: 3px;
       flex-shrink: 0; margin-top: 3px; font-family: var(--font-mono);
     }
-    .sev-low      { background: rgba(22,163,74,.10);  color: #16a34a; }
-    .sev-medium   { background: rgba(217,119,6,.10);  color: #d97706; }
-    .sev-high     { background: rgba(220,38,38,.10);  color: #dc2626; }
-    .sev-critical { background: rgba(124,10,26,.14);  color: var(--doom-hi); }
+    .sev-low      { background: rgba(255,190,0,.12);  color: #CC9200; }
+    .sev-medium   { background: rgba(255,122,0,.12);  color: #CC5500; }
+    .sev-high     { background: rgba(255,26,26,.12);  color: #CC0000; }
+    .sev-critical { background: rgba(192,0,10,.14);   color: #8C0008; }
     .load-more {
       width: 100%; padding: 9px; background: none; border: none;
       border-top: 1px solid var(--border); color: var(--text-muted);
@@ -251,20 +251,16 @@
     }
     .load-more:hover { color: var(--text); }
 
-    /* ── Pulsating map markers ────────────────────────────────────────────── */
-    .dm-icon { background: none !important; border: none !important; }
-    .dm-core {
-      position: absolute; inset: 0; border-radius: 50%;
-    }
-    .dm-ring {
-      position: absolute; border-radius: 50%; border: 1.5px solid;
+    /* ── SVG pulse rings (top 5 doom — circleMarker, compositor-only) ─────── */
+    .pulse-ring-svg {
+      transform-box: fill-box;
+      transform-origin: center;
+      animation: ring-expand 2s ease-out infinite;
       pointer-events: none;
-      animation: ring-out 2s ease-out infinite;
     }
-    .dm-ring.doom  { border-color: var(--doom-mid); }
-    @keyframes ring-out {
-      0%   { transform: scale(1);   opacity: 0.75; }
-      100% { transform: scale(3);   opacity: 0; }
+    @keyframes ring-expand {
+      0%   { transform: scale(1);   opacity: 0.7; }
+      100% { transform: scale(3.2); opacity: 0;   }
     }
 
     /* ── Event detail ────────────────────────────────────────────────────── */
@@ -325,6 +321,84 @@
     }
     .detail-link:hover { background: var(--text); color: var(--bg); }
 
+    /* ── AI analysis section (inside EventDetail) ───────────────────────── */
+    .ai-divider {
+      margin: 28px 0 0;
+      border-top: 1px solid var(--border);
+    }
+    .ai-section {
+      padding-top: 20px;
+    }
+    .ai-section-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .ai-section-label {
+      font-size: 9px; font-weight: 700; letter-spacing: 0.12em;
+      text-transform: uppercase; font-family: var(--font-mono);
+      color: var(--text-muted);
+    }
+    .ai-run-btn {
+      font-family: var(--font-sans); font-size: 11px; font-weight: 600;
+      padding: 5px 12px; border-radius: 6px; cursor: pointer;
+      background: var(--text); color: var(--bg); border: none;
+      transition: opacity 0.15s;
+    }
+    .ai-run-btn:hover  { opacity: 0.80; }
+    .ai-run-btn:disabled { opacity: 0.45; cursor: default; }
+    .ai-rerun-btn {
+      font-family: var(--font-mono); font-size: 14px;
+      background: none; border: none; cursor: pointer;
+      color: var(--text-muted); transition: color 0.15s; padding: 2px 4px;
+    }
+    .ai-rerun-btn:hover { color: var(--text); }
+    .ai-thinking {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 11px; color: var(--text-sec); font-family: var(--font-mono);
+    }
+    .ai-thinking-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--text-sec);
+      animation: ai-pulse 1.2s ease-in-out infinite;
+    }
+    @keyframes ai-pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%       { opacity: 0.3; transform: scale(0.7); }
+    }
+    .ai-error {
+      font-size: 11px; color: var(--doom-hi); font-family: var(--font-mono);
+      background: rgba(255,26,26,.06); border: 1px solid rgba(255,26,26,.15);
+      padding: 8px 12px; border-radius: 6px;
+    }
+    .ai-output {
+      font-size: 12px; line-height: 1.7; color: var(--text-sec);
+      white-space: pre-wrap; font-family: var(--font-sans);
+    }
+    .ai-no-key {
+      padding: 20px; border-radius: 10px;
+      border: 1px solid var(--border-hi);
+      background: linear-gradient(135deg, var(--surface) 0%, var(--surface-hi) 100%);
+    }
+    .ai-no-key-eyebrow {
+      font-size: 8px; font-weight: 700; letter-spacing: 0.14em;
+      text-transform: uppercase; font-family: var(--font-mono);
+      color: var(--text-muted); margin-bottom: 8px;
+    }
+    .ai-no-key-heading {
+      font-size: 14px; font-weight: 700; color: var(--text);
+      line-height: 1.3; margin-bottom: 10px;
+    }
+    .ai-no-key-body {
+      font-size: 12px; color: var(--text-sec); line-height: 1.65; margin-bottom: 16px;
+    }
+    .ai-setup-link {
+      display: inline-flex; align-items: center; gap: 5px;
+      font-size: 11px; font-weight: 600; font-family: var(--font-mono);
+      padding: 7px 13px; border-radius: 6px;
+      background: var(--text); color: var(--bg);
+      text-decoration: none; transition: opacity 0.15s;
+    }
+    .ai-setup-link:hover { opacity: 0.78; }
     /* ── Footer ──────────────────────────────────────────────────────────── */
     .app-footer {
       flex-shrink: 0;
@@ -450,7 +524,8 @@
     }
 
     @media (prefers-reduced-motion: reduce) {
-      .live-dot, .gh-btn, .dm-ring, .loading-bar-fill { animation: none !important; }
+      .live-dot, .gh-btn, .pulse-ring-svg, .loading-bar-fill,
+      .ai-thinking-dot { animation: none !important; }
       .detail-panel, .detail-backdrop, .error-toast   { animation: none !important; }
     }
 

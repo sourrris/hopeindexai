@@ -6,14 +6,20 @@ const { useState, useEffect, useRef, useMemo, useCallback } = React;
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const DOOM_COLORS = {
-  low:      "#FF8C5A",
-  medium:   "#E0421A",
-  high:     "#B81A1A",
-  critical: "#7C0A1A",
+  low:      "#FFBE00",   // golden yellow-orange
+  medium:   "#FF7A00",   // vivid orange
+  high:     "#FF1A1A",   // bright red
+  critical: "#C0000A",   // deep blood red
 };
-const DOOM_STROKE  = "#DC143C";
-const BLOOM_FILL   = "#06B6D4";
-const BLOOM_STROKE = "#00C8E8";
+const DOOM_STROKE = "#FF3333";
+
+const BLOOM_COLORS = {
+  low:      "#22C55E",   // bright green
+  medium:   "#10B981",   // emerald
+  high:     "#06B6D4",   // cyan
+  critical: "#00A3CC",   // deep cyan
+};
+const BLOOM_STROKE = "#00E5FF";
 
 // CartoDB light tiles — forced white theme, noWrap prevents world repetition
 const TILE_LIGHT = "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png";
@@ -26,7 +32,7 @@ const CONTINENTS  = ["All", "Americas", "Europe", "Middle East", "Africa", "Asia
 const SEVERITIES  = ["All", "Low", "Medium", "High", "Critical"];
 const DAY_OPTIONS = [1, 3, 7, 30];
 
-const GITHUB_URL = "https://github.com/sourrrish/hopeindexai";
+const GITHUB_URL = "https://github.com/sourrris/hopeindexai";
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
 
@@ -108,54 +114,6 @@ function TopBar({ doomCount, bloomCount }) {
 
 // ── Leaflet map ───────────────────────────────────────────────────────────────
 
-// Creates a DivIcon for each event.
-// pulse=true only for the top 5 doom events — keeps the page snappy.
-function makeMarkerIcon(ev, pulse = false) {
-  const isDoom  = ev.category === "doom";
-  const r       = ev.markerRadius;
-  const size    = r * 2;
-  const fill    = isDoom ? (DOOM_COLORS[ev.severity] ?? DOOM_COLORS.medium) : BLOOM_FILL;
-  const stroke  = isDoom ? DOOM_STROKE : BLOOM_STROKE;
-  const isPulse = pulse;
-  const opacity = ev.severity === "low" ? 0.55 : ev.severity === "medium" ? 0.70 : 0.88;
-  const pad     = isPulse ? 8 : 0;
-  const total   = size + pad * 2;
-
-  const ringHtml = isPulse
-    ? `<div class="dm-ring ${ev.category}" style="
-         position:absolute;
-         top:${pad}px;left:${pad}px;
-         width:${size}px;height:${size}px;
-       "></div>`
-    : "";
-
-  const html = `
-    <div style="position:relative;width:${total}px;height:${total}px;">
-      ${ringHtml}
-      <div class="dm-core" style="
-        position:absolute;
-        top:${pad}px;left:${pad}px;
-        width:${size}px;height:${size}px;
-        background:${fill};
-        border:1.5px solid ${stroke};
-        opacity:${opacity};
-      "></div>
-    </div>
-  `;
-
-  return L.marker([ev.lat, ev.lon], {
-    icon: L.divIcon({
-      html,
-      className:  "dm-icon",
-      iconSize:   [total, total],
-      iconAnchor: [total / 2, total / 2],
-    }),
-    zIndexOffset: ev.severity === "critical" ? 800
-                : ev.severity === "high"     ? 600
-                : isDoom                     ? 400 : 200,
-  });
-}
-
 function MapView({ events, selectedEvent, onSelectEvent }) {
   const containerRef = useRef(null);
   const mapRef       = useRef(null);
@@ -214,7 +172,10 @@ function MapView({ events, selectedEvent, onSelectEvent }) {
     if (!layerRef.current) return;
     layerRef.current.clearLayers();
 
-    // Pulse only the 5 highest-severity doom events — keeps rendering fast
+    // Sort ascending so most severe render on top in SVG layer order
+    const sorted = [...events].sort((a, b) => a.markerRadius - b.markerRadius);
+
+    // Top 5 doom events get an SVG pulse ring — all compositor, no DOM nodes
     const topDoomIds = new Set(
       events
         .filter((e) => e.category === "doom")
@@ -223,8 +184,21 @@ function MapView({ events, selectedEvent, onSelectEvent }) {
         .map((e) => e.id)
     );
 
-    for (const ev of events) {
-      const marker = makeMarkerIcon(ev, topDoomIds.has(ev.id));
+    for (const ev of sorted) {
+      const isDoom  = ev.category === "doom";
+      const fill    = isDoom
+        ? (DOOM_COLORS[ev.severity]  ?? DOOM_COLORS.medium)
+        : (BLOOM_COLORS[ev.severity] ?? BLOOM_COLORS.high);
+      const stroke  = isDoom ? DOOM_STROKE : BLOOM_STROKE;
+      const opacity = ev.severity === "low" ? 0.55 : ev.severity === "medium" ? 0.70 : 0.88;
+
+      const marker = L.circleMarker([ev.lat, ev.lon], {
+        radius:      ev.markerRadius,
+        fillColor:   fill,
+        color:       stroke,
+        weight:      1.5,
+        fillOpacity: opacity,
+      });
 
       const actorLine = ev.actor1 !== "Unknown"
         ? `${ev.actor1}${ev.actor2 !== "Unknown" ? " → " + ev.actor2 : ""}`
@@ -234,9 +208,21 @@ function MapView({ events, selectedEvent, onSelectEvent }) {
         `<strong>${actorLine}</strong><br/>${ev.location || ev.country}`,
         { sticky: true, direction: "top" }
       );
-
       marker.on("click", () => onSelectEvent(ev));
       layerRef.current.addLayer(marker);
+
+      // Pulse ring: second circleMarker, transparent fill, animated via CSS
+      if (topDoomIds.has(ev.id)) {
+        const ring = L.circleMarker([ev.lat, ev.lon], {
+          radius:      ev.markerRadius,
+          fillColor:   "transparent",
+          color:       DOOM_STROKE,
+          weight:      1.5,
+          fillOpacity: 0,
+          className:   "pulse-ring-svg",
+        });
+        layerRef.current.addLayer(ring);
+      }
     }
   }, [events, onSelectEvent]);
 
@@ -385,9 +371,63 @@ function EventRow({ event, selected, onClick }) {
   );
 }
 
+// ── AI analysis ───────────────────────────────────────────────────────────────
+
+function AiAnalysis({ event, apiKey }) {
+  const [analysis, setAnalysis] = useState("");
+  const [loading,  setLoading]  = useState(false);
+  const [error,    setError]    = useState("");
+
+  const run = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    setAnalysis("");
+    try {
+      const res = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiKey, events: [event], mode: "detail" }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setAnalysis(data.analysis ?? "");
+    } catch (err) {
+      setError(err.message ?? "Analysis failed. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }, [event, apiKey]);
+
+  return (
+    <div className="ai-section">
+      <div className="ai-section-header">
+        <span className="ai-section-label">AI Analysis</span>
+        {!analysis && !loading && (
+          <button className="ai-run-btn" onClick={run} disabled={loading}>
+            Analyze Event
+          </button>
+        )}
+        {analysis && (
+          <button className="ai-rerun-btn" onClick={run} disabled={loading} aria-label="Re-run analysis">
+            ↺
+          </button>
+        )}
+      </div>
+      {loading && (
+        <div className="ai-thinking">
+          <span className="ai-thinking-dot" />
+          Consulting geopolitical intelligence…
+        </div>
+      )}
+      {error && <div className="ai-error">{error}</div>}
+      {analysis && <div className="ai-output">{analysis}</div>}
+    </div>
+  );
+}
+
 // ── Event detail ──────────────────────────────────────────────────────────────
 
-function EventDetail({ event, onClose }) {
+function EventDetail({ event, onClose, apiKey, aiReady }) {
   useEffect(() => {
     const onKey = (e) => { if (e.key === "Escape") onClose(); };
     document.addEventListener("keydown", onKey);
@@ -471,6 +511,30 @@ function EventDetail({ event, onClose }) {
               Source Article <IconExternalLink />
             </a>
           )}
+
+          <div className="ai-divider" />
+
+          {aiReady ? (
+            <AiAnalysis event={event} apiKey={apiKey} />
+          ) : (
+            <div className="ai-no-key">
+              <div className="ai-no-key-eyebrow">AI Geopolitical Analysis</div>
+              <div className="ai-no-key-heading">Unlock expert briefings for every event.</div>
+              <div className="ai-no-key-body">
+                Connect an Anthropic API key to get structured intelligence on this event —
+                economic ripple effects, cultural dimensions, regional escalation signals,
+                and a global impact outlook, powered by Claude.
+              </div>
+              <a
+                href={GITHUB_URL + "#ai-analysis"}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="ai-setup-link"
+              >
+                Setup guide →
+              </a>
+            </div>
+          )}
         </div>
       </section>
     </>
@@ -518,6 +582,16 @@ function App() {
   const [loading,  setLoading]  = useState(false);
   const [slowLoad, setSlowLoad] = useState(false);
   const [error,    setError]    = useState("");
+  const [apiKey,   setApiKey]   = useState(() => sessionStorage.getItem("hope_api_key") ?? "");
+  const [aiReady,  setAiReady]  = useState(false);
+
+  // Check once whether the server has an API key configured
+  useEffect(() => {
+    fetch("/api/ai-status")
+      .then((r) => r.json())
+      .then((d) => setAiReady(d.ready || Boolean(apiKey)))
+      .catch(() => setAiReady(Boolean(apiKey)));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     let cancelled = false;
@@ -583,7 +657,7 @@ function App() {
         />
         <MapLegend />
         {selected && (
-          <EventDetail event={selected} onClose={() => setSelected(null)} />
+          <EventDetail event={selected} onClose={() => setSelected(null)} apiKey={apiKey} aiReady={aiReady} />
         )}
       </main>
 
