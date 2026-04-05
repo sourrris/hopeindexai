@@ -149,7 +149,7 @@ const FIPS_CONTINENT: Record<string, string> = {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const GDELT_BASE = "https://data.gdeltproject.org/gdeltv2/";
+const GDELT_BASE = "http://data.gdeltproject.org/gdeltv2/";
 const MAX_POINTS = 1_500;
 const ROWS_PER_FILE = 1_200;
 const N_FILES = 10;
@@ -163,19 +163,36 @@ const cache = new Map<string, { data: GdeltEvent[]; ts: number }>();
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function gdeltUrls(days: number): string[] {
+  const INTERVAL = 15 * 60 * 1000; // 15-minute intervals
   const now = Date.now();
-  const urls = new Set<string>();
+  // Round down to nearest 15-min mark, then step back one interval for
+  // processing lag (GDELT files appear a few minutes after the interval).
+  const latest = Math.floor(now / INTERVAL) * INTERVAL - INTERVAL;
+
+  const seen = new Set<string>();
+  const urls: string[] = [];
 
   for (let i = 0; i < N_FILES; i++) {
-    const offset = days === 1 ? i / N_FILES : (days * i) / (N_FILES - 1);
-    const d = new Date(now - offset * 86_400_000);
-    const yyyy = d.getUTCFullYear();
-    const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
-    const dd = String(d.getUTCDate()).padStart(2, "0");
-    urls.add(`${GDELT_BASE}${yyyy}${mm}${dd}120000.export.CSV.zip`);
+    // For days=1 step back by 15-min intervals; for wider ranges spread evenly.
+    const offsetMs = days === 1
+      ? i * INTERVAL
+      : (days * i / (N_FILES - 1)) * 86_400_000;
+
+    const t = new Date(Math.floor((latest - offsetMs) / INTERVAL) * INTERVAL);
+    const yyyy = t.getUTCFullYear();
+    const mm   = String(t.getUTCMonth() + 1).padStart(2, "0");
+    const dd   = String(t.getUTCDate()).padStart(2, "0");
+    const hh   = String(t.getUTCHours()).padStart(2, "0");
+    const min  = String(t.getUTCMinutes()).padStart(2, "0");
+    const url  = `${GDELT_BASE}${yyyy}${mm}${dd}${hh}${min}00.export.CSV.zip`;
+
+    if (!seen.has(url)) {
+      seen.add(url);
+      urls.push(url);
+    }
   }
 
-  return [...urls];
+  return urls;
 }
 
 function getSeverity(g: number | null): GdeltEvent["severity"] {
