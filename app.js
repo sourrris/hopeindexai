@@ -108,14 +108,15 @@ function TopBar({ doomCount, bloomCount }) {
 
 // ── Leaflet map ───────────────────────────────────────────────────────────────
 
-// Creates a DivIcon for each event. High/critical get an expanding CSS ring.
-function makeMarkerIcon(ev) {
+// Creates a DivIcon for each event.
+// pulse=true only for the top 5 doom events — keeps the page snappy.
+function makeMarkerIcon(ev, pulse = false) {
   const isDoom  = ev.category === "doom";
   const r       = ev.markerRadius;
   const size    = r * 2;
   const fill    = isDoom ? (DOOM_COLORS[ev.severity] ?? DOOM_COLORS.medium) : BLOOM_FILL;
   const stroke  = isDoom ? DOOM_STROKE : BLOOM_STROKE;
-  const isPulse = ev.severity === "high" || ev.severity === "critical";
+  const isPulse = pulse;
   const opacity = ev.severity === "low" ? 0.55 : ev.severity === "medium" ? 0.70 : 0.88;
   const pad     = isPulse ? 8 : 0;
   const total   = size + pad * 2;
@@ -213,8 +214,17 @@ function MapView({ events, selectedEvent, onSelectEvent }) {
     if (!layerRef.current) return;
     layerRef.current.clearLayers();
 
+    // Pulse only the 5 highest-severity doom events — keeps rendering fast
+    const topDoomIds = new Set(
+      events
+        .filter((e) => e.category === "doom")
+        .sort((a, b) => b.markerRadius - a.markerRadius)
+        .slice(0, 5)
+        .map((e) => e.id)
+    );
+
     for (const ev of events) {
-      const marker = makeMarkerIcon(ev);
+      const marker = makeMarkerIcon(ev, topDoomIds.has(ev.id));
 
       const actorLine = ev.actor1 !== "Unknown"
         ? `${ev.actor1}${ev.actor2 !== "Unknown" ? " → " + ev.actor2 : ""}`
