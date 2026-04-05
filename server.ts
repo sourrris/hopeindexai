@@ -1,4 +1,4 @@
-import { app } from "./src/app";
+import { app } from "./api/index";
 
 // Static files — local dev only (Vercel serves these from public/)
 app.get("/", async (c) => {
