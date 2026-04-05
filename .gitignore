@@ -1,24 +1,10 @@
-# Virtual environment
-.venv/
-venv/
-env/
-
-# Streamlit secrets — never commit real keys
-.streamlit/secrets.toml
-
-# Python
-__pycache__/
-*.pyc
-*.pyo
-.pytest_cache/
-*.egg-info/
-dist/
-build/
-
-# OS
+node_modules/
+.env
 .DS_Store
 Thumbs.db
-
-# IDE
-.vscode/
+*.log
+bun.lockb
+dist/
+build/
 .idea/
+.vscode/
