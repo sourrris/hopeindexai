@@ -6,26 +6,29 @@ const { useState, useEffect, useRef, useMemo, useCallback } = React;
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const DOOM_COLORS = {
-  low:      "#FF6B35",
+  low:      "#FF8C5A",
   medium:   "#E0421A",
   high:     "#B81A1A",
   critical: "#7C0A1A",
 };
 const DOOM_STROKE  = "#DC143C";
 const BLOOM_FILL   = "#06B6D4";
-const BLOOM_STROKE = "#00E5FF";
+const BLOOM_STROKE = "#00C8E8";
 
-const TILE_DARK  = "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png";
+// CartoDB light tiles — forced white theme, noWrap prevents world repetition
 const TILE_LIGHT = "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png";
-const TILE_ATTR  = '© <a href="https://osm.org">OpenStreetMap</a> © <a href="https://carto.com">CARTO</a>';
+const TILE_ATTR  = '© <a href="https://osm.org">OSM</a> © <a href="https://carto.com">CARTO</a>';
 
-const CONTINENTS = ["All", "Americas", "Europe", "Middle East", "Africa", "Asia", "Oceania"];
-const SEVERITIES = ["All", "Low", "Medium", "High", "Critical"];
+// Hard world bounds — no panning past the edge of the earth
+const WORLD_BOUNDS = L.latLngBounds(L.latLng(-85, -220), L.latLng(85, 220));
+
+const CONTINENTS  = ["All", "Americas", "Europe", "Middle East", "Africa", "Asia", "Oceania"];
+const SEVERITIES  = ["All", "Low", "Medium", "High", "Critical"];
 const DAY_OPTIONS = [1, 3, 7, 30];
 
 const GITHUB_URL = "https://github.com/sourrrish/hopeindexai";
 
-// ── Icons (SVG inline) ────────────────────────────────────────────────────────
+// ── Icons ─────────────────────────────────────────────────────────────────────
 
 function IconGithub() {
   return (
@@ -60,38 +63,97 @@ function IconExternalLink() {
 
 // ── Top bar ───────────────────────────────────────────────────────────────────
 
-function TopBar({ eventCount }) {
+function TopBar({ doomCount, bloomCount }) {
+  const total = doomCount + bloomCount;
   return (
     <header className="topbar" role="banner">
-      <span className="topbar-brand">HopeIndexAI</span>
+      <span className="topbar-brand">
+        HopeIndex<span className="brand-suffix">AI</span>
+      </span>
 
       <div className="topbar-center">
-        <div className="live-badge" role="status" aria-label="Live data">
+        <div className="live-badge" role="status" aria-label="Live data feed">
           <span className="live-dot" aria-hidden="true" />
           LIVE
         </div>
-        {eventCount > 0 && (
-          <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)" }}>
-            {eventCount.toLocaleString()} events
-          </span>
+        {total > 0 && (
+          <div className="topbar-stats">
+            <span className="stat-pill doom">
+              <span className="stat-dot doom" aria-hidden="true" />
+              {doomCount.toLocaleString()} conflict
+            </span>
+            <span className="stat-pill bloom">
+              <span className="stat-dot bloom" aria-hidden="true" />
+              {bloomCount.toLocaleString()} coop.
+            </span>
+          </div>
         )}
       </div>
 
-      <a
-        href={GITHUB_URL}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="gh-btn"
-        aria-label="View HopeIndexAI on GitHub"
-      >
-        <IconGithub />
-        HopeIndexAI
-      </a>
+      <div className="topbar-right">
+        <a
+          href={GITHUB_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="gh-btn"
+          aria-label="View HopeIndexAI on GitHub"
+        >
+          <IconGithub />
+          HopeIndexAI
+        </a>
+      </div>
     </header>
   );
 }
 
 // ── Leaflet map ───────────────────────────────────────────────────────────────
+
+// Creates a DivIcon for each event. High/critical get an expanding CSS ring.
+function makeMarkerIcon(ev) {
+  const isDoom  = ev.category === "doom";
+  const r       = ev.markerRadius;
+  const size    = r * 2;
+  const fill    = isDoom ? (DOOM_COLORS[ev.severity] ?? DOOM_COLORS.medium) : BLOOM_FILL;
+  const stroke  = isDoom ? DOOM_STROKE : BLOOM_STROKE;
+  const isPulse = ev.severity === "high" || ev.severity === "critical";
+  const opacity = ev.severity === "low" ? 0.55 : ev.severity === "medium" ? 0.70 : 0.88;
+  const pad     = isPulse ? 8 : 0;
+  const total   = size + pad * 2;
+
+  const ringHtml = isPulse
+    ? `<div class="dm-ring ${ev.category}" style="
+         position:absolute;
+         top:${pad}px;left:${pad}px;
+         width:${size}px;height:${size}px;
+       "></div>`
+    : "";
+
+  const html = `
+    <div style="position:relative;width:${total}px;height:${total}px;">
+      ${ringHtml}
+      <div class="dm-core" style="
+        position:absolute;
+        top:${pad}px;left:${pad}px;
+        width:${size}px;height:${size}px;
+        background:${fill};
+        border:1.5px solid ${stroke};
+        opacity:${opacity};
+      "></div>
+    </div>
+  `;
+
+  return L.marker([ev.lat, ev.lon], {
+    icon: L.divIcon({
+      html,
+      className:  "dm-icon",
+      iconSize:   [total, total],
+      iconAnchor: [total / 2, total / 2],
+    }),
+    zIndexOffset: ev.severity === "critical" ? 800
+                : ev.severity === "high"     ? 600
+                : isDoom                     ? 400 : 200,
+  });
+}
 
 function MapView({ events, selectedEvent, onSelectEvent }) {
   const containerRef = useRef(null);
@@ -104,26 +166,28 @@ function MapView({ events, selectedEvent, onSelectEvent }) {
     if (mapRef.current) return;
 
     const map = L.map(containerRef.current, {
-      center: [20, 10],
+      center: [22, 12],
       zoom: 2,
+      minZoom: 2,            // can't zoom out past one world
+      maxZoom: 14,
+      maxBounds: WORLD_BOUNDS,
+      maxBoundsViscosity: 1.0,
       zoomControl: false,
       attributionControl: true,
     });
 
     L.control.zoom({ position: "bottomright" }).addTo(map);
 
-    const addTile = (dark) => {
+    const addTile = () => {
       if (tileRef.current) map.removeLayer(tileRef.current);
-      tileRef.current = L.tileLayer(dark ? TILE_DARK : TILE_LIGHT, {
+      tileRef.current = L.tileLayer(TILE_LIGHT, {
         attribution: TILE_ATTR,
         subdomains: "abcd",
         maxZoom: 19,
+        noWrap: true,        // prevents world-tile repetition
       }).addTo(map);
     };
-
-    const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    addTile(mq.matches);
-    mq.addEventListener("change", (e) => addTile(e.matches));
+    addTile();
 
     layerRef.current = L.layerGroup().addTo(map);
     mapRef.current = map;
@@ -137,10 +201,11 @@ function MapView({ events, selectedEvent, onSelectEvent }) {
   // Pan to selected event
   useEffect(() => {
     if (!selectedEvent || !mapRef.current) return;
-    mapRef.current.setView([selectedEvent.lat, selectedEvent.lon], Math.max(mapRef.current.getZoom(), 6), {
-      animate: true,
-      duration: 0.6,
-    });
+    mapRef.current.setView(
+      [selectedEvent.lat, selectedEvent.lon],
+      Math.max(mapRef.current.getZoom(), 6),
+      { animate: true, duration: 0.6 }
+    );
   }, [selectedEvent]);
 
   // Redraw markers when events change
@@ -149,28 +214,16 @@ function MapView({ events, selectedEvent, onSelectEvent }) {
     layerRef.current.clearLayers();
 
     for (const ev of events) {
-      const isDoom  = ev.category === "doom";
-      const fill    = isDoom ? (DOOM_COLORS[ev.severity] ?? DOOM_COLORS.medium) : BLOOM_FILL;
-      const stroke  = isDoom ? DOOM_STROKE : BLOOM_STROKE;
-      const opacity = ev.severity === "low" ? 0.55 : ev.severity === "medium" ? 0.68 : 0.82;
+      const marker = makeMarkerIcon(ev);
 
-      const marker = L.circleMarker([ev.lat, ev.lon], {
-        radius:      ev.markerRadius,
-        fillColor:   fill,
-        color:       stroke,
-        weight:      1,
-        opacity:     0.9,
-        fillOpacity: opacity,
-      });
-
-      const tip = ev.actor1 !== "Unknown"
+      const actorLine = ev.actor1 !== "Unknown"
         ? `${ev.actor1}${ev.actor2 !== "Unknown" ? " → " + ev.actor2 : ""}`
         : ev.quadLabel;
 
-      marker.bindTooltip(`<span style="font-family:var(--font-mono);font-size:11px">${tip}<br/><span style="color:#888">${ev.location || ev.country}</span></span>`, {
-        sticky: true,
-        className: "leaflet-tooltip-plain",
-      });
+      marker.bindTooltip(
+        `<strong>${actorLine}</strong><br/>${ev.location || ev.country}`,
+        { sticky: true, direction: "top" }
+      );
 
       marker.on("click", () => onSelectEvent(ev));
       layerRef.current.addLayer(marker);
@@ -180,36 +233,55 @@ function MapView({ events, selectedEvent, onSelectEvent }) {
   return <div ref={containerRef} id="map" aria-label="Geopolitical event map" />;
 }
 
+// ── Map legend ────────────────────────────────────────────────────────────────
+
+function MapLegend() {
+  return (
+    <div className="map-legend" aria-label="Map legend">
+      <div className="legend-row">
+        <span className="legend-swatch" style={{ background: "#DC143C" }} />
+        Conflict
+      </div>
+      <div className="legend-row">
+        <span className="legend-swatch" style={{ background: "#06B6D4" }} />
+        Cooperation
+      </div>
+      <div className="legend-row" style={{ marginTop: 4, color: "var(--text-muted)", fontSize: 9 }}>
+        Ring = high / critical
+      </div>
+    </div>
+  );
+}
+
 // ── Filter panel ──────────────────────────────────────────────────────────────
 
 function FilterPanel({ filters, onFilter, filteredEvents, selectedEvent, onSelectEvent, loading }) {
-  const [open, setOpen]    = useState(true);
-  const [limit, setLimit]  = useState(120);
+  const [open,  setOpen]  = useState(true);
+  const [limit, setLimit] = useState(120);
 
-  const visibleEvents = useMemo(() => filteredEvents.slice(0, limit), [filteredEvents, limit]);
+  const visible = useMemo(() => filteredEvents.slice(0, limit), [filteredEvents, limit]);
 
-  function setDays(d) { onFilter({ ...filters, days: d }); }
-  function setContinent(c) { onFilter({ ...filters, continent: c }); }
-  function setSeverity(s)  { onFilter({ ...filters, severity: s });  }
+  const setDays      = (d) => onFilter({ ...filters, days: d });
+  const setContinent = (c) => onFilter({ ...filters, continent: c });
+  const setSeverity  = (s) => onFilter({ ...filters, severity:  s });
 
   return (
     <aside className={`filter-panel${open ? "" : " collapsed"}`} aria-label="Event filters">
       <div className="filter-head" onClick={() => setOpen(!open)} aria-expanded={open}>
         <div className="filter-head-left">
-          <span className="filter-label">{open ? "Filters" : ""}</span>
+          {open && <span className="filter-label">Filters</span>}
           {open && (
             <span className="filter-count-badge" aria-live="polite">
               {loading ? "…" : filteredEvents.length.toLocaleString()}
             </span>
           )}
         </div>
-        <button className="filter-toggle-btn" aria-label={open ? "Collapse filters" : "Expand filters"}>
+        <button className="filter-toggle-btn" aria-label={open ? "Collapse" : "Expand"}>
           <IconChevron open={open} />
         </button>
       </div>
 
       <div className="filter-body">
-        {/* Days */}
         <div className="filter-group">
           <div className="filter-group-label">Range</div>
           <div className="chip-row">
@@ -219,14 +291,11 @@ function FilterPanel({ filters, onFilter, filteredEvents, selectedEvent, onSelec
                 className={`chip${filters.days === d ? " on" : ""}`}
                 onClick={() => setDays(d)}
                 aria-pressed={filters.days === d}
-              >
-                {d}d
-              </button>
+              >{d}d</button>
             ))}
           </div>
         </div>
 
-        {/* Continent */}
         <div className="filter-group">
           <div className="filter-group-label">Region</div>
           <div className="chip-row">
@@ -236,14 +305,11 @@ function FilterPanel({ filters, onFilter, filteredEvents, selectedEvent, onSelec
                 className={`chip${filters.continent === c ? " on" : ""}`}
                 onClick={() => setContinent(c)}
                 aria-pressed={filters.continent === c}
-              >
-                {c}
-              </button>
+              >{c}</button>
             ))}
           </div>
         </div>
 
-        {/* Severity */}
         <div className="filter-group">
           <div className="filter-group-label">Severity</div>
           <div className="chip-row">
@@ -253,21 +319,18 @@ function FilterPanel({ filters, onFilter, filteredEvents, selectedEvent, onSelec
                 className={`chip${filters.severity === s ? " on" : ""}`}
                 onClick={() => setSeverity(s)}
                 aria-pressed={filters.severity === s}
-              >
-                {s}
-              </button>
+              >{s}</button>
             ))}
           </div>
         </div>
 
-        {/* Event list */}
         {filteredEvents.length > 0 && (
           <>
             <div className="elist-header" aria-live="polite">
-              Showing {Math.min(limit, filteredEvents.length)} of {filteredEvents.length.toLocaleString()}
+              {Math.min(limit, filteredEvents.length)} of {filteredEvents.length.toLocaleString()}
             </div>
             <div className="elist" role="list">
-              {visibleEvents.map((ev) => (
+              {visible.map((ev) => (
                 <EventRow
                   key={ev.id}
                   event={ev}
@@ -312,19 +375,17 @@ function EventRow({ event, selected, onClick }) {
   );
 }
 
-// ── Event detail panel ────────────────────────────────────────────────────────
+// ── Event detail ──────────────────────────────────────────────────────────────
 
 function EventDetail({ event, onClose }) {
-  // Trap focus + Escape
   useEffect(() => {
-    function onKey(e) { if (e.key === "Escape") onClose(); }
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
 
   const goldsteinPct = event.goldstein !== null
-    ? ((event.goldstein + 10) / 20) * 100
-    : 50;
+    ? ((event.goldstein + 10) / 20) * 100 : 50;
 
   const title = event.actor1 !== "Unknown"
     ? `${event.actor1}${event.actor2 !== "Unknown" ? " → " + event.actor2 : ""}`
@@ -335,7 +396,7 @@ function EventDetail({ event, onClose }) {
       <div className="detail-backdrop" onClick={onClose} aria-hidden="true" />
       <section className="detail-panel" role="dialog" aria-modal="true" aria-label="Event detail">
         <div className={`detail-bar ${event.category}`} />
-        <button className="detail-close" onClick={onClose} aria-label="Close detail">✕</button>
+        <button className="detail-close" onClick={onClose} aria-label="Close">✕</button>
 
         <div className="detail-body">
           <div className={`detail-cat ${event.category}`}>
@@ -348,12 +409,10 @@ function EventDetail({ event, onClose }) {
               <div>
                 <div className="dfield-label">Actors</div>
                 <div className="dfield-val">
-                  {event.actor1}
-                  {event.actor2 !== "Unknown" && <> → {event.actor2}</>}
+                  {event.actor1}{event.actor2 !== "Unknown" && <> → {event.actor2}</>}
                 </div>
               </div>
             )}
-
             <div>
               <div className="dfield-label">Location</div>
               <div className="dfield-val">{event.location || event.country}</div>
@@ -361,12 +420,10 @@ function EventDetail({ event, onClose }) {
                 {event.lat.toFixed(3)}, {event.lon.toFixed(3)}
               </div>
             </div>
-
             <div>
               <div className="dfield-label">Date</div>
               <div className="dfield-val">{event.date}</div>
             </div>
-
             <div>
               <div className="dfield-label">
                 Goldstein Scale
@@ -374,26 +431,21 @@ function EventDetail({ event, onClose }) {
                   {event.goldstein !== null ? event.goldstein.toFixed(1) : "n/a"} / ±10
                 </span>
               </div>
-              <div className={`sev-badge sev-${event.severity}`} style={{ display: "inline-block" }}>
+              <span className={`sev-badge sev-${event.severity}`} style={{ display: "inline-block", marginBottom: 6 }}>
                 {event.severity}
-              </div>
+              </span>
               {event.goldstein !== null && (
                 <div className="goldstein-track">
-                  <div
-                    className={`goldstein-fill ${event.category}`}
-                    style={{ width: `${goldsteinPct}%` }}
-                  />
+                  <div className={`goldstein-fill ${event.category}`} style={{ width: `${goldsteinPct}%` }} />
                 </div>
               )}
             </div>
-
             {event.numMentions > 0 && (
               <div>
                 <div className="dfield-label">Coverage</div>
                 <div className="dfield-val">{event.numMentions.toLocaleString()} mentions</div>
               </div>
             )}
-
             {event.avgTone !== null && (
               <div>
                 <div className="dfield-label">Average Tone</div>
@@ -405,12 +457,7 @@ function EventDetail({ event, onClose }) {
           </div>
 
           {event.sourceUrl && (
-            <a
-              href={event.sourceUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="detail-link"
-            >
+            <a href={event.sourceUrl} target="_blank" rel="noopener noreferrer" className="detail-link">
               Source Article <IconExternalLink />
             </a>
           )}
@@ -420,99 +467,23 @@ function EventDetail({ event, onClose }) {
   );
 }
 
-// ── AI section ────────────────────────────────────────────────────────────────
-
-function AiSection({ filteredEvents }) {
-  const [apiKey,    setApiKey]    = useState("");
-  const [result,    setResult]    = useState("");
-  const [loading,   setLoading]   = useState(false);
-  const [error,     setError]     = useState("");
-
-  const hasKey = apiKey.trim().length > 0;
-
-  async function analyze() {
-    setLoading(true);
-    setError("");
-    setResult("");
-
-    try {
-      const res = await fetch("/api/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          apiKey: apiKey.trim(),
-          events: filteredEvents,
-        }),
-        signal: AbortSignal.timeout(35_000),
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-      setResult(data.analysis ?? "");
-    } catch (err) {
-      setError(err.message ?? "Analysis failed.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  return (
-    <section className="ai-section" aria-label="AI analysis">
-      <div className="ai-inner">
-        <input
-          className="ai-key"
-          type="password"
-          placeholder="sk-ant-… — Anthropic API key for AI analysis"
-          value={apiKey}
-          onChange={(e) => { setApiKey(e.target.value); setResult(""); setError(""); }}
-          aria-label="Anthropic API key"
-          spellCheck={false}
-          autoComplete="off"
-        />
-
-        {hasKey ? (
-          <button
-            className="ai-btn"
-            onClick={analyze}
-            disabled={loading || filteredEvents.length === 0}
-            aria-busy={loading}
-          >
-            {loading ? "Analyzing…" : "Analyze"}
-          </button>
-        ) : (
-          <p className="ai-hint">
-            AI-powered pattern analysis available with your own API key.{" "}
-            <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer">
-              Setup guide →
-            </a>
-          </p>
-        )}
-      </div>
-
-      {(result || error) && (
-        <div className="ai-result-wrap">
-          {error  && <div className="ai-error">{error}</div>}
-          {result && <div className="ai-result">{result}</div>}
-        </div>
-      )}
-    </section>
-  );
-}
-
-// ── Loading / error overlays ──────────────────────────────────────────────────
+// ── Loading + error ───────────────────────────────────────────────────────────
 
 function LoadingOverlay({ slow }) {
   return (
     <div className="loading-overlay" role="status" aria-live="polite">
       <div className="loading-box">
-        <div className="spinner" aria-hidden="true" />
-        <div className="loading-text">
-          {slow ? "Still fetching GDELT data…" : "Fetching events…"}
+        <div className="loading-wordmark">
+          HopeIndex<span className="wm-suffix">AI</span>
+        </div>
+        <div className="loading-bar">
+          <div className="loading-bar-fill" />
+        </div>
+        <div className="loading-label">
+          {slow ? "GDELT data — almost there" : "Syncing live events"}
         </div>
         {slow && (
-          <div style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
-            GDELT servers can be slow — up to 10 s per file
-          </div>
+          <div className="loading-sub">Up to 10 s per file · cached 15 min</div>
         )}
       </div>
     </div>
@@ -523,12 +494,12 @@ function ErrorToast({ message, onDismiss }) {
   return (
     <div className="error-toast" role="alert">
       <span style={{ flex: 1 }}>{message}</span>
-      <button className="error-dismiss" onClick={onDismiss} aria-label="Dismiss error">✕</button>
+      <button className="error-dismiss" onClick={onDismiss} aria-label="Dismiss">✕</button>
     </div>
   );
 }
 
-// ── Root app ──────────────────────────────────────────────────────────────────
+// ── Root ──────────────────────────────────────────────────────────────────────
 
 function App() {
   const [events,   setEvents]   = useState([]);
@@ -538,7 +509,6 @@ function App() {
   const [slowLoad, setSlowLoad] = useState(false);
   const [error,    setError]    = useState("");
 
-  // Fetch when days change (server-side filter)
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -554,9 +524,7 @@ function App() {
         if (data.error) throw new Error(data.error);
         setEvents(data.events ?? []);
       })
-      .catch((err) => {
-        if (!cancelled) setError(err.message ?? "Failed to load events.");
-      })
+      .catch((err) => { if (!cancelled) setError(err.message ?? "Failed to load events."); })
       .finally(() => {
         if (!cancelled) { setLoading(false); setSlowLoad(false); }
         clearTimeout(slowTimer);
@@ -565,14 +533,16 @@ function App() {
     return () => { cancelled = true; clearTimeout(slowTimer); };
   }, [filters.days]);
 
-  // Client-side filtering for continent + severity
-  const filteredEvents = useMemo(() => {
-    return events.filter((e) => {
-      if (filters.continent !== "All" && e.continent !== filters.continent) return false;
-      if (filters.severity  !== "All" && e.severity.toLowerCase() !== filters.severity.toLowerCase()) return false;
-      return true;
-    });
-  }, [events, filters.continent, filters.severity]);
+  const filteredEvents = useMemo(() => events.filter((e) => {
+    if (filters.continent !== "All" && e.continent !== filters.continent) return false;
+    if (filters.severity  !== "All" && e.severity.toLowerCase() !== filters.severity.toLowerCase()) return false;
+    return true;
+  }), [events, filters.continent, filters.severity]);
+
+  const { doomCount, bloomCount } = useMemo(() => ({
+    doomCount:  filteredEvents.filter((e) => e.category === "doom").length,
+    bloomCount: filteredEvents.filter((e) => e.category === "bloom").length,
+  }), [filteredEvents]);
 
   const handleSelectEvent = useCallback((ev) => {
     setSelected((prev) => (prev?.id === ev.id ? null : ev));
@@ -585,7 +555,7 @@ function App() {
 
   return (
     <>
-      <TopBar eventCount={filteredEvents.length} />
+      <TopBar doomCount={doomCount} bloomCount={bloomCount} />
 
       <main className="app-main">
         <MapView
@@ -601,22 +571,16 @@ function App() {
           onSelectEvent={handleSelectEvent}
           loading={loading}
         />
+        <MapLegend />
         {selected && (
-          <EventDetail
-            event={selected}
-            onClose={() => setSelected(null)}
-          />
+          <EventDetail event={selected} onClose={() => setSelected(null)} />
         )}
       </main>
-
-      <AiSection filteredEvents={filteredEvents} />
 
       {loading && <LoadingOverlay slow={slowLoad} />}
       {error    && <ErrorToast message={error} onDismiss={() => setError("")} />}
     </>
   );
 }
-
-// ── Mount ─────────────────────────────────────────────────────────────────────
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
