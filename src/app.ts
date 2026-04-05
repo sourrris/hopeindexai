@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { inflateRawSync } from "node:zlib";
+import { inflateRawSync } from "zlib";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
