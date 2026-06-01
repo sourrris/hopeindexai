@@ -8,6 +8,10 @@
   "scripts": {
     "dev": "bun --watch server.ts",
     "start": "bun server.ts",
+    "sync": "bun scripts/sync.ts",
+    "enrich": "bun pipeline/enrich.ts",
+    "train": "bun pipeline/train.ts",
+    "ontology:validate": "bun scripts/validate_ontology_phase1.ts",
     "test:vercel": "bun test-handler.mjs"
   },
   "dependencies": {

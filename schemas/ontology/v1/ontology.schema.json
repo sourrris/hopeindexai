@@ -1,0 +1,553 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hopeindex.ai/schemas/ontology/v1/ontology.schema.json",
+  "title": "HopeIndexAI Ontology v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion"],
+  "properties": {
+    "schemaVersion": {
+      "const": "ontology.v1"
+    },
+    "actors": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/Actor" },
+      "default": []
+    },
+    "events": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/Event" },
+      "default": []
+    },
+    "eventClusters": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/EventCluster" },
+      "default": []
+    },
+    "locations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/Location" },
+      "default": []
+    },
+    "sources": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/Source" },
+      "default": []
+    },
+    "claims": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/Claim" },
+      "default": []
+    },
+    "predictions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/Prediction" },
+      "default": []
+    },
+    "analystAssessments": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/AnalystAssessment" },
+      "default": []
+    },
+    "actorProfiles": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/ActorProfile" },
+      "default": []
+    },
+    "watchlists": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/Watchlist" },
+      "default": []
+    },
+    "relationships": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/Relationship" },
+      "default": []
+    }
+  },
+  "$defs": {
+    "OntologyId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?::[a-z0-9][a-z0-9._-]*)+$"
+    },
+    "Confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "IsoDate": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "IsoDateTime": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "EvidenceGrade": {
+      "type": "string",
+      "enum": ["thin", "partial", "strong"]
+    },
+    "Theme": {
+      "type": "string",
+      "enum": ["Diplomacy", "Conflict", "Econ", "Environment", "Humanitarian", "Science", "Unknown"]
+    },
+    "Severity": {
+      "type": "string",
+      "enum": ["low", "medium", "high", "critical", "unknown"]
+    },
+    "ActorType": {
+      "type": "string",
+      "enum": ["person", "government", "country", "organization", "military", "movement", "company", "media", "unknown"]
+    },
+    "RelationshipType": {
+      "type": "string",
+      "enum": [
+        "participates_in",
+        "belongs_to",
+        "occurs_at",
+        "reported_by",
+        "explains",
+        "evaluates",
+        "describes",
+        "supports",
+        "member_of",
+        "aliases",
+        "located_in",
+        "derived_from"
+      ]
+    },
+    "Actor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["objectType", "id", "name", "canonicalName", "actorType", "confidence", "createdAt", "updatedAt"],
+      "properties": {
+        "objectType": { "const": "Actor" },
+        "id": { "$ref": "#/$defs/OntologyId" },
+        "externalIds": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "default": {}
+        },
+        "name": { "type": "string", "minLength": 1 },
+        "canonicalName": { "type": "string", "minLength": 1 },
+        "aliases": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": []
+        },
+        "actorType": { "$ref": "#/$defs/ActorType" },
+        "countryCodes": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 2, "maxLength": 3 },
+          "default": []
+        },
+        "actorProfileId": { "$ref": "#/$defs/OntologyId" },
+        "confidence": { "$ref": "#/$defs/Confidence" },
+        "evidenceSourceIds": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/OntologyId" },
+          "default": []
+        },
+        "createdAt": { "$ref": "#/$defs/IsoDateTime" },
+        "updatedAt": { "$ref": "#/$defs/IsoDateTime" }
+      }
+    },
+    "Event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "objectType",
+        "id",
+        "sourceSystem",
+        "sourceEventId",
+        "occurredOn",
+        "category",
+        "participantActorIds",
+        "locationId",
+        "sourceIds",
+        "clusterId",
+        "signals",
+        "confidence",
+        "createdAt",
+        "updatedAt"
+      ],
+      "properties": {
+        "objectType": { "const": "Event" },
+        "id": { "$ref": "#/$defs/OntologyId" },
+        "sourceSystem": {
+          "type": "string",
+          "enum": ["gdelt", "manual", "import"]
+        },
+        "sourceEventId": { "type": "string", "minLength": 1 },
+        "occurredAt": { "$ref": "#/$defs/IsoDateTime" },
+        "occurredOn": { "$ref": "#/$defs/IsoDate" },
+        "category": {
+          "type": "string",
+          "enum": ["doom", "bloom", "neutral", "unknown"]
+        },
+        "theme": { "$ref": "#/$defs/Theme" },
+        "summary": { "type": "string" },
+        "participantActorIds": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/OntologyId" },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "actorRoles": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["actorId", "role"],
+            "properties": {
+              "actorId": { "$ref": "#/$defs/OntologyId" },
+              "role": {
+                "type": "string",
+                "enum": ["actor1", "actor2", "subject", "object", "mentioned", "affected"]
+              },
+              "rawName": { "type": "string" }
+            }
+          },
+          "default": []
+        },
+        "locationId": { "$ref": "#/$defs/OntologyId" },
+        "sourceIds": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/OntologyId" },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "clusterId": { "$ref": "#/$defs/OntologyId" },
+        "signals": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["severity"],
+          "properties": {
+            "goldstein": { "type": ["number", "null"] },
+            "quadClass": { "type": ["integer", "null"], "minimum": 1, "maximum": 4 },
+            "quadLabel": { "type": "string" },
+            "avgTone": { "type": ["number", "null"] },
+            "numMentions": { "type": "integer", "minimum": 0 },
+            "hopeScore": { "type": "integer", "minimum": 0, "maximum": 100 },
+            "severity": { "$ref": "#/$defs/Severity" }
+          }
+        },
+        "sourceRow": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "confidence": { "$ref": "#/$defs/Confidence" },
+        "createdAt": { "$ref": "#/$defs/IsoDateTime" },
+        "updatedAt": { "$ref": "#/$defs/IsoDateTime" }
+      }
+    },
+    "EventCluster": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["objectType", "id", "memberEventIds", "representativeEventId", "clusterMethod", "startDate", "endDate", "confidence", "createdAt", "updatedAt"],
+      "properties": {
+        "objectType": { "const": "EventCluster" },
+        "id": { "$ref": "#/$defs/OntologyId" },
+        "memberEventIds": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/OntologyId" },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "representativeEventId": { "$ref": "#/$defs/OntologyId" },
+        "clusterMethod": {
+          "type": "string",
+          "enum": ["gdelt-grid-v1", "manual", "future-entity-resolution"]
+        },
+        "theme": { "$ref": "#/$defs/Theme" },
+        "countryCode": { "type": "string" },
+        "startDate": { "$ref": "#/$defs/IsoDate" },
+        "endDate": { "$ref": "#/$defs/IsoDate" },
+        "summary": { "type": "string" },
+        "confidence": { "$ref": "#/$defs/Confidence" },
+        "createdAt": { "$ref": "#/$defs/IsoDateTime" },
+        "updatedAt": { "$ref": "#/$defs/IsoDateTime" }
+      }
+    },
+    "Location": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["objectType", "id", "label", "precision", "confidence", "createdAt", "updatedAt"],
+      "properties": {
+        "objectType": { "const": "Location" },
+        "id": { "$ref": "#/$defs/OntologyId" },
+        "label": { "type": "string", "minLength": 1 },
+        "rawName": { "type": "string" },
+        "fipsCountryCode": { "type": "string", "minLength": 2, "maxLength": 2 },
+        "countryName": { "type": "string" },
+        "continent": {
+          "type": "string",
+          "enum": ["Americas", "Europe", "Middle East", "Africa", "Asia", "Oceania", "Other", "Unknown"]
+        },
+        "lat": { "type": "number", "minimum": -90, "maximum": 90 },
+        "lon": { "type": "number", "minimum": -180, "maximum": 180 },
+        "precision": {
+          "type": "string",
+          "enum": ["coordinate", "city", "region", "country", "unknown"]
+        },
+        "confidence": { "$ref": "#/$defs/Confidence" },
+        "createdAt": { "$ref": "#/$defs/IsoDateTime" },
+        "updatedAt": { "$ref": "#/$defs/IsoDateTime" }
+      }
+    },
+    "Source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["objectType", "id", "sourceKind", "title", "credibility", "confidence", "createdAt", "updatedAt"],
+      "properties": {
+        "objectType": { "const": "Source" },
+        "id": { "$ref": "#/$defs/OntologyId" },
+        "sourceKind": {
+          "type": "string",
+          "enum": ["article", "book", "official", "academic", "news_archive", "wiki", "unknown"]
+        },
+        "title": { "type": "string", "minLength": 1 },
+        "url": { "type": "string" },
+        "domain": { "type": "string" },
+        "authors": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": []
+        },
+        "year": { "type": ["integer", "null"], "minimum": 0 },
+        "credibility": {
+          "type": "string",
+          "enum": ["unknown", "low", "medium", "high"]
+        },
+        "evidenceGrade": { "$ref": "#/$defs/EvidenceGrade" },
+        "fetched": { "type": "boolean" },
+        "status": { "type": "string" },
+        "excerpt": { "type": "string" },
+        "confidence": { "$ref": "#/$defs/Confidence" },
+        "createdAt": { "$ref": "#/$defs/IsoDateTime" },
+        "updatedAt": { "$ref": "#/$defs/IsoDateTime" }
+      }
+    },
+    "Claim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["objectType", "id", "claimText", "sourceIds", "confidence", "createdAt", "updatedAt"],
+      "properties": {
+        "objectType": { "const": "Claim" },
+        "id": { "$ref": "#/$defs/OntologyId" },
+        "claimText": { "type": "string", "minLength": 1 },
+        "claimType": {
+          "type": "string",
+          "enum": ["actor_profile", "event_fact", "causal_hypothesis", "source_assessment", "prediction_rationale"]
+        },
+        "actorId": { "$ref": "#/$defs/OntologyId" },
+        "eventId": { "$ref": "#/$defs/OntologyId" },
+        "profileId": { "$ref": "#/$defs/OntologyId" },
+        "sourceIds": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/OntologyId" },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "evidenceSummary": { "type": "string" },
+        "priorConfidence": {
+          "type": "string",
+          "enum": ["low", "medium", "high", "unknown"]
+        },
+        "posteriorConfidence": {
+          "type": "string",
+          "enum": ["low", "medium", "high", "unknown"]
+        },
+        "confidence": { "$ref": "#/$defs/Confidence" },
+        "createdAt": { "$ref": "#/$defs/IsoDateTime" },
+        "updatedAt": { "$ref": "#/$defs/IsoDateTime" }
+      }
+    },
+    "Prediction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["objectType", "id", "targetId", "targetType", "modelVersion", "probability", "horizonDays", "drivers", "limitations", "createdAt"],
+      "properties": {
+        "objectType": { "const": "Prediction" },
+        "id": { "$ref": "#/$defs/OntologyId" },
+        "targetId": { "$ref": "#/$defs/OntologyId" },
+        "targetType": {
+          "type": "string",
+          "enum": ["Event", "EventCluster", "Actor", "Watchlist"]
+        },
+        "modelVersion": { "type": "string", "minLength": 1 },
+        "targetName": { "type": "string" },
+        "probability": { "$ref": "#/$defs/Confidence" },
+        "label": {
+          "type": "string",
+          "enum": ["low", "elevated", "high"]
+        },
+        "horizonDays": { "type": "integer", "minimum": 0 },
+        "drivers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["feature", "contribution", "direction"],
+            "properties": {
+              "feature": { "type": "string" },
+              "contribution": { "type": "number" },
+              "direction": { "type": "string", "enum": ["raises", "lowers"] }
+            }
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "createdAt": { "$ref": "#/$defs/IsoDateTime" }
+      }
+    },
+    "AnalystAssessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["objectType", "id", "predictionId", "assessorId", "assessment", "confidence", "createdAt"],
+      "properties": {
+        "objectType": { "const": "AnalystAssessment" },
+        "id": { "$ref": "#/$defs/OntologyId" },
+        "predictionId": { "$ref": "#/$defs/OntologyId" },
+        "assessorId": { "type": "string", "minLength": 1 },
+        "assessment": {
+          "type": "string",
+          "enum": ["useful", "not_useful", "mixed", "incorrect", "unknown"]
+        },
+        "outcomeObserved": { "type": "boolean" },
+        "correctedProbability": { "$ref": "#/$defs/Confidence" },
+        "notes": { "type": "string" },
+        "confidence": { "$ref": "#/$defs/Confidence" },
+        "createdAt": { "$ref": "#/$defs/IsoDateTime" }
+      }
+    },
+    "ActorProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["objectType", "id", "actorId", "profileKind", "summary", "sourceIds", "confidence", "createdAt", "updatedAt"],
+      "properties": {
+        "objectType": { "const": "ActorProfile" },
+        "id": { "$ref": "#/$defs/OntologyId" },
+        "actorId": { "$ref": "#/$defs/OntologyId" },
+        "profileKind": {
+          "type": "string",
+          "enum": ["historical_person", "current_actor", "organization", "country", "unknown"]
+        },
+        "summary": { "type": "string", "minLength": 1 },
+        "roles": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": []
+        },
+        "incentives": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": []
+        },
+        "constraints": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": []
+        },
+        "likelyMoves": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": []
+        },
+        "riskTolerance": {
+          "type": "string",
+          "enum": ["low", "medium", "high", "unknown"]
+        },
+        "gameTheoryProfile": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "bayesianAssessments": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["claim", "priorConfidence", "posteriorConfidence", "evidence"],
+            "properties": {
+              "claim": { "type": "string" },
+              "priorConfidence": { "type": "string", "enum": ["low", "medium", "high", "unknown"] },
+              "posteriorConfidence": { "type": "string", "enum": ["low", "medium", "high", "unknown"] },
+              "evidence": {
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "whatWouldChangeThis": { "type": "string" }
+            }
+          },
+          "default": []
+        },
+        "sourceIds": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/OntologyId" },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "confidence": { "$ref": "#/$defs/Confidence" },
+        "createdAt": { "$ref": "#/$defs/IsoDateTime" },
+        "updatedAt": { "$ref": "#/$defs/IsoDateTime" }
+      }
+    },
+    "Watchlist": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["objectType", "id", "name", "ownerScope", "criteria", "createdAt", "updatedAt"],
+      "properties": {
+        "objectType": { "const": "Watchlist" },
+        "id": { "$ref": "#/$defs/OntologyId" },
+        "name": { "type": "string", "minLength": 1 },
+        "ownerScope": {
+          "type": "string",
+          "enum": ["system", "analyst", "team"]
+        },
+        "criteria": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "actorIds": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/OntologyId" },
+          "uniqueItems": true,
+          "default": []
+        },
+        "eventClusterIds": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/OntologyId" },
+          "uniqueItems": true,
+          "default": []
+        },
+        "createdAt": { "$ref": "#/$defs/IsoDateTime" },
+        "updatedAt": { "$ref": "#/$defs/IsoDateTime" }
+      }
+    },
+    "Relationship": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["objectType", "id", "relationshipType", "fromId", "toId", "confidence", "createdAt"],
+      "properties": {
+        "objectType": { "const": "Relationship" },
+        "id": { "$ref": "#/$defs/OntologyId" },
+        "relationshipType": { "$ref": "#/$defs/RelationshipType" },
+        "fromId": { "$ref": "#/$defs/OntologyId" },
+        "toId": { "$ref": "#/$defs/OntologyId" },
+        "sourceSystem": { "type": "string" },
+        "evidenceSourceIds": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/OntologyId" },
+          "default": []
+        },
+        "validFrom": { "$ref": "#/$defs/IsoDate" },
+        "validTo": { "$ref": "#/$defs/IsoDate" },
+        "notes": { "type": "string" },
+        "confidence": { "$ref": "#/$defs/Confidence" },
+        "createdAt": { "$ref": "#/$defs/IsoDateTime" }
+      }
+    }
+  }
+}

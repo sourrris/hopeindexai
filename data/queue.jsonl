@@ -1,0 +1,105 @@
+{"person_id":"george_washington","name":"George Washington","priority_tier":1,"status":"completed","region":"United States"}
+{"person_id":"abraham_lincoln","name":"Abraham Lincoln","priority_tier":1,"status":"completed","region":"United States"}
+{"person_id":"franklin_d_roosevelt","name":"Franklin D. Roosevelt","priority_tier":1,"status":"completed","region":"United States"}
+{"person_id":"theodore_roosevelt","name":"Theodore Roosevelt","priority_tier":2,"status":"completed","region":"United States"}
+{"person_id":"alexander_hamilton","name":"Alexander Hamilton","priority_tier":2,"status":"completed","region":"United States"}
+{"person_id":"thomas_jefferson","name":"Thomas Jefferson","priority_tier":1,"status":"completed","region":"United States"}
+{"person_id":"richard_nixon","name":"Richard Nixon","priority_tier":2,"status":"completed","region":"United States"}
+{"person_id":"ronald_reagan","name":"Ronald Reagan","priority_tier":1,"status":"completed","region":"United States"}
+{"person_id":"barack_obama","name":"Barack Obama","priority_tier":2,"status":"completed","region":"United States"}
+{"person_id":"dwight_d_eisenhower","name":"Dwight D. Eisenhower","priority_tier":2,"status":"completed","region":"United States"}
+{"person_id":"winston_churchill","name":"Winston Churchill","priority_tier":1,"status":"completed","region":"Europe"}
+{"person_id":"napoleon_bonaparte","name":"Napoleon Bonaparte","priority_tier":1,"status":"completed","region":"Europe"}
+{"person_id":"otto_von_bismarck","name":"Otto von Bismarck","priority_tier":1,"status":"completed","region":"Europe"}
+{"person_id":"charles_de_gaulle","name":"Charles de Gaulle","priority_tier":1,"status":"completed","region":"Europe"}
+{"person_id":"margaret_thatcher","name":"Margaret Thatcher","priority_tier":1,"status":"completed","region":"Europe"}
+{"person_id":"adolf_hitler","name":"Adolf Hitler","priority_tier":1,"status":"completed","region":"Europe"}
+{"person_id":"julius_caesar","name":"Julius Caesar","priority_tier":1,"status":"completed","region":"Europe"}
+{"person_id":"augustus","name":"Augustus","priority_tier":1,"status":"completed","region":"Europe"}
+{"person_id":"charlemagne","name":"Charlemagne","priority_tier":1,"status":"completed","region":"Europe"}
+{"person_id":"elizabeth_i","name":"Elizabeth I","priority_tier":1,"status":"completed","region":"Europe"}
+{"person_id":"mahatma_gandhi","name":"Mahatma Gandhi","priority_tier":1,"status":"completed","region":"India"}
+{"person_id":"jawaharlal_nehru","name":"Jawaharlal Nehru","priority_tier":1,"status":"completed","region":"India"}
+{"person_id":"indira_gandhi","name":"Indira Gandhi","priority_tier":1,"status":"completed","region":"India"}
+{"person_id":"narendra_modi","name":"Narendra Modi","priority_tier":1,"status":"completed","region":"India"}
+{"person_id":"ashoka_the_great","name":"Ashoka the Great","priority_tier":1,"status":"completed","region":"India"}
+{"person_id":"akbar_the_great","name":"Akbar the Great","priority_tier":1,"status":"completed","region":"India"}
+{"person_id":"subhas_chandra_bose","name":"Subhas Chandra Bose","priority_tier":1,"status":"completed","region":"India"}
+{"person_id":"vallabhbhai_patel","name":"Vallabhbhai Patel","priority_tier":1,"status":"completed","region":"India"}
+{"person_id":"b_r_ambedkar","name":"B. R. Ambedkar","priority_tier":1,"status":"completed","region":"India"}
+{"person_id":"shivaji_maharaj","name":"Shivaji Maharaj","priority_tier":2,"status":"completed","region":"India"}
+{"person_id":"mao_zedong","name":"Mao Zedong","priority_tier":1,"status":"completed","region":"China"}
+{"person_id":"deng_xiaoping","name":"Deng Xiaoping","priority_tier":1,"status":"completed","region":"China"}
+{"person_id":"xi_jinping","name":"Xi Jinping","priority_tier":1,"status":"completed","region":"China"}
+{"person_id":"sun_yat_sen","name":"Sun Yat-sen","priority_tier":1,"status":"completed","region":"China"}
+{"person_id":"qin_shi_huang","name":"Qin Shi Huang","priority_tier":1,"status":"completed","region":"China"}
+{"person_id":"emperor_wu_of_han","name":"Emperor Wu of Han","priority_tier":2,"status":"completed","region":"China"}
+{"person_id":"zhou_enlai","name":"Zhou Enlai","priority_tier":1,"status":"completed","region":"China"}
+{"person_id":"cixi","name":"Empress Dowager Cixi","priority_tier":2,"status":"completed","region":"China"}
+{"person_id":"chiang_kai_shek","name":"Chiang Kai-shek","priority_tier":2,"status":"completed","region":"China"}
+{"person_id":"tang_taizong","name":"Emperor Taizong of Tang","priority_tier":2,"status":"completed","region":"China"}
+{"person_id":"vladimir_lenin","name":"Vladimir Lenin","priority_tier":1,"status":"completed","region":"Russia / Soviet Union"}
+{"person_id":"joseph_stalin","name":"Joseph Stalin","priority_tier":1,"status":"completed","region":"Russia / Soviet Union"}
+{"person_id":"vladimir_putin","name":"Vladimir Putin","priority_tier":1,"status":"completed","region":"Russia / Soviet Union"}
+{"person_id":"peter_the_great","name":"Peter the Great","priority_tier":1,"status":"completed","region":"Russia / Soviet Union"}
+{"person_id":"catherine_the_great","name":"Catherine the Great","priority_tier":1,"status":"completed","region":"Russia / Soviet Union"}
+{"person_id":"mikhail_gorbachev","name":"Mikhail Gorbachev","priority_tier":1,"status":"completed","region":"Russia / Soviet Union"}
+{"person_id":"nikita_khrushchev","name":"Nikita Khrushchev","priority_tier":2,"status":"completed","region":"Russia / Soviet Union"}
+{"person_id":"nicholas_ii","name":"Nicholas II","priority_tier":2,"status":"completed","region":"Russia / Soviet Union"}
+{"person_id":"leon_trotsky","name":"Leon Trotsky","priority_tier":2,"status":"completed","region":"Russia / Soviet Union"}
+{"person_id":"ivan_the_terrible","name":"Ivan the Terrible","priority_tier":2,"status":"completed","region":"Russia / Soviet Union"}
+{"person_id":"gamal_abdel_nasser","name":"Gamal Abdel Nasser","priority_tier":1,"status":"completed","region":"Middle East"}
+{"person_id":"ayatollah_khomeini","name":"Ayatollah Khomeini","priority_tier":1,"status":"completed","region":"Middle East"}
+{"person_id":"saddam_hussein","name":"Saddam Hussein","priority_tier":1,"status":"completed","region":"Middle East"}
+{"person_id":"yasser_arafat","name":"Yasser Arafat","priority_tier":1,"status":"completed","region":"Middle East"}
+{"person_id":"david_ben_gurion","name":"David Ben-Gurion","priority_tier":1,"status":"completed","region":"Middle East"}
+{"person_id":"mustafa_kemal_ataturk","name":"Mustafa Kemal Atatürk","priority_tier":1,"status":"completed","region":"Middle East"}
+{"person_id":"mohammad_reza_pahlavi","name":"Mohammad Reza Pahlavi","priority_tier":2,"status":"completed","region":"Middle East"}
+{"person_id":"suleiman_the_magnificent","name":"Suleiman the Magnificent","priority_tier":1,"status":"completed","region":"Middle East"}
+{"person_id":"saladin","name":"Saladin","priority_tier":1,"status":"completed","region":"Middle East"}
+{"person_id":"anwar_sadat","name":"Anwar Sadat","priority_tier":2,"status":"completed","region":"Middle East"}
+{"person_id":"nelson_mandela","name":"Nelson Mandela","priority_tier":1,"status":"completed","region":"Africa"}
+{"person_id":"kwame_nkrumah","name":"Kwame Nkrumah","priority_tier":1,"status":"completed","region":"Africa"}
+{"person_id":"julius_nyerere","name":"Julius Nyerere","priority_tier":1,"status":"completed","region":"Africa"}
+{"person_id":"jomo_kenyatta","name":"Jomo Kenyatta","priority_tier":1,"status":"completed","region":"Africa"}
+{"person_id":"muammar_gaddafi","name":"Muammar Gaddafi","priority_tier":1,"status":"completed","region":"Africa"}
+{"person_id":"haile_selassie","name":"Haile Selassie","priority_tier":1,"status":"completed","region":"Africa"}
+{"person_id":"patrice_lumumba","name":"Patrice Lumumba","priority_tier":2,"status":"completed","region":"Africa"}
+{"person_id":"leopold_senghor","name":"Leopold Senghor","priority_tier":2,"status":"completed","region":"Africa"}
+{"person_id":"shaka_zulu","name":"Shaka Zulu","priority_tier":2,"status":"completed","region":"Africa"}
+{"person_id":"idi_amin","name":"Idi Amin","priority_tier":2,"status":"completed","region":"Africa"}
+{"person_id":"simon_bolivar","name":"Simón Bolívar","priority_tier":1,"status":"completed","region":"Latin America"}
+{"person_id":"fidel_castro","name":"Fidel Castro","priority_tier":1,"status":"completed","region":"Latin America"}
+{"person_id":"che_guevara","name":"Che Guevara","priority_tier":1,"status":"completed","region":"Latin America"}
+{"person_id":"juan_peron","name":"Juan Perón","priority_tier":1,"status":"completed","region":"Latin America"}
+{"person_id":"getulio_vargas","name":"Getúlio Vargas","priority_tier":2,"status":"completed","region":"Latin America"}
+{"person_id":"hugo_chavez","name":"Hugo Chávez","priority_tier":1,"status":"completed","region":"Latin America"}
+{"person_id":"salvador_allende","name":"Salvador Allende","priority_tier":2,"status":"completed","region":"Latin America"}
+{"person_id":"augusto_pinochet","name":"Augusto Pinochet","priority_tier":2,"status":"completed","region":"Latin America"}
+{"person_id":"benito_juarez","name":"Benito Juárez","priority_tier":2,"status":"completed","region":"Latin America"}
+{"person_id":"dom_pedro_ii","name":"Dom Pedro II","priority_tier":2,"status":"completed","region":"Latin America"}
+{"person_id":"genghis_khan","name":"Genghis Khan","priority_tier":1,"status":"completed","region":"major empires"}
+{"person_id":"alexander_the_great","name":"Alexander the Great","priority_tier":1,"status":"completed","region":"major empires"}
+{"person_id":"prophet_muhammad","name":"Prophet Muhammad","priority_tier":1,"status":"completed","region":"global economic, military, scientific, religious, and technology figures"}
+{"person_id":"siddhartha_gautama","name":"Siddhartha Gautama","priority_tier":1,"status":"completed","region":"global economic, military, scientific, religious, and technology figures"}
+{"person_id":"jesus_of_nazareth","name":"Jesus of Nazareth","priority_tier":1,"status":"completed","region":"global economic, military, scientific, religious, and technology figures"}
+{"person_id":"karl_marx","name":"Karl Marx","priority_tier":1,"status":"completed","region":"global economic, military, scientific, religious, and technology figures"}
+{"person_id":"adam_smith","name":"Adam Smith","priority_tier":1,"status":"completed","region":"global economic, military, scientific, religious, and technology figures"}
+{"person_id":"isaac_newton","name":"Isaac Newton","priority_tier":1,"status":"completed","region":"global economic, military, scientific, religious, and technology figures"}
+{"person_id":"albert_einstein","name":"Albert Einstein","priority_tier":1,"status":"completed","region":"global economic, military, scientific, religious, and technology figures"}
+{"person_id":"john_maynard_keynes","name":"John Maynard Keynes","priority_tier":2,"status":"completed","region":"global economic, military, scientific, religious, and technology figures"}
+{"person_id":"thomas_hobbes","name":"Thomas Hobbes","priority_tier":2,"status":"completed","region":"Europe"}
+{"person_id":"niccolo_machiavelli","name":"Niccolò Machiavelli","priority_tier":1,"status":"completed","region":"Italy"}
+{"person_id":"queen_victoria","name":"Queen Victoria","priority_tier":1,"status":"completed","region":"Europe"}
+{"person_id":"louis_xiv","name":"Louis XIV","priority_tier":1,"status":"completed","region":"Europe"}
+{"person_id":"thomas_edison","name":"Thomas Alva Edison","priority_tier":2,"status":"completed","region":"Global"}
+{"person_id":"max_weber","name":"Max Weber","priority_tier":2,"status":"completed","region":"Europe"}
+{"person_id":"charles_darwin","name":"Charles Darwin","priority_tier":1,"status":"completed","region":"Global"}
+{"person_id":"john_locke","name":"John Locke","priority_tier":1,"status":"completed","region":"Europe"}
+{"person_id":"klemens_von_metternich","name":"Klemens von Metternich","priority_tier":2,"status":"completed","region":"Europe"}
+{"person_id":"henry_kissinger","name":"Henry Kissinger","priority_tier":2,"status":"completed","region":"Global"}
+{"person_id":"lee_kuan_yew","name":"Lee Kuan Yew","priority_tier":1,"status":"completed","region":"Southeast Asia"}
+{"person_id":"sun_tzu","name":"Sun Tzu","priority_tier":1,"status":"completed","region":"China"}
+{"person_id":"hannibal_barca","name":"Hannibal Barca","priority_tier":1,"status":"completed","region":"Spain"}
+{"person_id":"cyrus_the_great","name":"Cyrus the Great","priority_tier":1,"status":"completed","region":"Media"}
+{"person_id":"king_faisal","name":"King Faisal","priority_tier":2,"status":"completed","region":"Middle East"}
