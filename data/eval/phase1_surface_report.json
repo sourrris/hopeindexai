@@ -1,0 +1,662 @@
+{
+  "generatedAt": "2026-06-01T16:10:17.664Z",
+  "policyPath": "public/data/surfacing-policy.json",
+  "eventPath": "public/data/events.json",
+  "reportPath": "data/eval/phase1_surface_report.json",
+  "threshold": 66,
+  "metrics": {
+    "labels": {
+      "rows": 120,
+      "sourceCounts": {
+        "llm_article_review": 120
+      },
+      "humanReviewedRows": 0
+    },
+    "baseline": {
+      "samples": 120,
+      "positives": 42,
+      "negatives": 78,
+      "predictedPositive": 117,
+      "accuracy": 0.375,
+      "balancedAccuracy": 0.5192,
+      "precision": 0.359,
+      "recall": 1,
+      "specificity": 0.0385,
+      "f1": 0.5283,
+      "falseAlarmRate": 0.641,
+      "missRate": 0,
+      "confusion": {
+        "tp": 42,
+        "fp": 75,
+        "tn": 3,
+        "fn": 0
+      }
+    },
+    "candidateModel": {
+      "samples": 120,
+      "positives": 42,
+      "negatives": 78,
+      "predictedPositive": 75,
+      "accuracy": 0.5583,
+      "balancedAccuracy": 0.6053,
+      "precision": 0.4267,
+      "recall": 0.7619,
+      "specificity": 0.4487,
+      "f1": 0.547,
+      "falseAlarmRate": 0.5733,
+      "missRate": 0.2381,
+      "confusion": {
+        "tp": 32,
+        "fp": 43,
+        "tn": 35,
+        "fn": 10
+      }
+    },
+    "surfacePolicy": {
+      "samples": 120,
+      "positives": 42,
+      "negatives": 78,
+      "predictedPositive": 36,
+      "accuracy": 0.8667,
+      "balancedAccuracy": 0.837,
+      "precision": 0.8611,
+      "recall": 0.7381,
+      "specificity": 0.9359,
+      "f1": 0.7949,
+      "falseAlarmRate": 0.1389,
+      "missRate": 0.2619,
+      "confusion": {
+        "tp": 31,
+        "fp": 5,
+        "tn": 73,
+        "fn": 11
+      }
+    },
+    "precisionAt": {
+      "top10": 1,
+      "top25": 0.96,
+      "top50": 0.68
+    }
+  },
+  "errorAnalysis": {
+    "falsePositiveCount": 5,
+    "falseNegativeCount": 11,
+    "falsePositiveCauses": {
+      "governance or public-safety signal": 2,
+      "background or source-mismatch article": 2,
+      "strategic actor or theater": 1,
+      "high-risk regional context": 1,
+      "duplicate source row": 1,
+      "direct event wording": 1
+    },
+    "falseNegativeCauses": {
+      "duplicate source row": 9,
+      "analysis/opinion source": 1,
+      "high-mention diplomacy": 1,
+      "generic GDELT extraction": 1,
+      "local crime pattern": 1
+    },
+    "topFalsePositives": [
+      {
+        "id": "1306183836",
+        "date": "2026-05-27",
+        "title": "ISRAELI -> SETTLEMENT",
+        "sourceDomain": "jpost.com",
+        "score": 100,
+        "modelProbability": 0.8308,
+        "reasons": [
+          "strategic actor or theater",
+          "governance or public-safety signal",
+          "high-risk regional context"
+        ],
+        "sourceUrl": "https://www.jpost.com/diaspora/antisemitism/article-897519"
+      },
+      {
+        "id": "1306479871",
+        "date": "2026-05-29",
+        "title": "ISRAELI -> IRAN",
+        "sourceDomain": "caribbeanherald.com",
+        "score": 77.47,
+        "modelProbability": 0.9542,
+        "reasons": [
+          "strategic actor or theater",
+          "high-risk regional context",
+          "penalty: background or source-mismatch article"
+        ],
+        "sourceUrl": "http://www.caribbeanherald.com/news/279073737/the-role-of-the-neo-authoritarian-bloc-in-modern-conflicts"
+      },
+      {
+        "id": "1306132828",
+        "date": "2026-05-27",
+        "title": "GAZA -> JOURNALIST",
+        "sourceDomain": "freebeacon.com",
+        "score": 75.01,
+        "modelProbability": 0.885,
+        "reasons": [
+          "strategic actor or theater",
+          "high-risk regional context",
+          "penalty: background or source-mismatch article"
+        ],
+        "sourceUrl": "https://freebeacon.com/media/committee-to-protect-journalists-key-source-for-kristofs-rape-claims-has-board-stacked-with-anti-israel-figures-who-accused-israel-of-apocalyptic-destruction-genocide-apartheid/"
+      },
+      {
+        "id": "1306445038",
+        "date": "2026-05-29",
+        "title": "IRANIAN -> AMERICAN",
+        "sourceDomain": "nzherald.co.nz",
+        "score": 72.04,
+        "modelProbability": 0.858,
+        "reasons": [
+          "strategic actor or theater",
+          "direct event wording",
+          "penalty: duplicate source row"
+        ],
+        "sourceUrl": "https://www.nzherald.co.nz/world/us-and-iran-standoff-at-sea-a-test-of-who-blinks-first/premium/5RVBE6VYSZB6FJTNWVPZAN6NBQ/"
+      },
+      {
+        "id": "1306444826",
+        "date": "2026-05-29",
+        "title": "POLICE -> GAMBIA",
+        "sourceDomain": "miragenews.com",
+        "score": 71.75,
+        "modelProbability": 0.1846,
+        "reasons": [
+          "direct event wording",
+          "governance or public-safety signal"
+        ],
+        "sourceUrl": "https://www.miragenews.com/more-charges-in-bathurst-lab-bomb-site-raid-1682743/"
+      }
+    ],
+    "topFalseNegatives": [
+      {
+        "id": "1306480261",
+        "date": "2026-05-29",
+        "title": "TURKEY -> PROSECUTOR",
+        "sourceDomain": "rollingstoneindia.com",
+        "score": 3,
+        "modelProbability": 0.8096,
+        "reasons": [
+          "GDELT/model signal only",
+          "penalty: local crime pattern",
+          "penalty: duplicate source row"
+        ],
+        "sourceUrl": "https://rollingstoneindia.com/man-accused-of-plotting-taylor-swift-concert-attack-apologizes-ahead-of-trial-verdict/"
+      },
+      {
+        "id": "1306734846",
+        "date": "2026-05-31",
+        "title": "COMMANDER",
+        "sourceDomain": "premiumtimesng.com",
+        "score": 27.38,
+        "modelProbability": 0.2233,
+        "reasons": [
+          "direct event wording",
+          "penalty: duplicate source row"
+        ],
+        "sourceUrl": "https://www.premiumtimesng.com/news/top-news/884071-nigerian-troops-ambush-terrorists-kill-one-official.html"
+      },
+      {
+        "id": "1306641403",
+        "date": "2026-05-30",
+        "title": "Material Conflict",
+        "sourceDomain": "prokerala.com",
+        "score": 30.43,
+        "modelProbability": 0.3198,
+        "reasons": [
+          "GDELT/model signal only",
+          "penalty: generic GDELT extraction"
+        ],
+        "sourceUrl": "https://www.prokerala.com/news/articles/a1769136.html"
+      },
+      {
+        "id": "1305688220",
+        "date": "2026-05-24",
+        "title": "SECURITY FORCE -> MILITANT",
+        "sourceDomain": "khaama.com",
+        "score": 36.7,
+        "modelProbability": 0.3277,
+        "reasons": [
+          "strategic actor or theater",
+          "direct event wording",
+          "penalty: duplicate source row"
+        ],
+        "sourceUrl": "https://www.khaama.com/ttp-leader-announces-eid-ceasefire-amid-rising-violence-in-pakistan/"
+      },
+      {
+        "id": "1306306146",
+        "date": "2026-05-28",
+        "title": "SECURITY FORCE",
+        "sourceDomain": "nationalaccordnewspaper.com",
+        "score": 41.56,
+        "modelProbability": 0.3705,
+        "reasons": [
+          "strategic actor or theater",
+          "direct event wording",
+          "penalty: duplicate source row"
+        ],
+        "sourceUrl": "https://www.nationalaccordnewspaper.com/about-30000-fulani-militants-behind-insecurity-in-nigeria-says-us-report/"
+      },
+      {
+        "id": "1306359192",
+        "date": "2026-05-28",
+        "title": "CITIZEN",
+        "sourceDomain": "13newsnow.com",
+        "score": 44.21,
+        "modelProbability": 0.386,
+        "reasons": [
+          "direct event wording",
+          "governance or public-safety signal",
+          "penalty: duplicate source row"
+        ],
+        "sourceUrl": "https://www.13newsnow.com/article/news/local/virginia/virginia-assault-weapons-ban-faces-pushback-from-prosecutors/65-8778fde1-3d26-4eab-a8bb-fcc571a76ad2"
+      },
+      {
+        "id": "1305718918",
+        "date": "2026-05-24",
+        "title": "RUSSIA -> CIVILIAN",
+        "sourceDomain": "ianslive.in",
+        "score": 44.63,
+        "modelProbability": 0.5165,
+        "reasons": [
+          "strategic actor or theater",
+          "direct event wording",
+          "penalty: duplicate source row"
+        ],
+        "sourceUrl": "https://ianslive.in/european-leaders-condemn-russias-use-of-oreshnik-missile-against-ukraine--20260524224423"
+      },
+      {
+        "id": "1305688040",
+        "date": "2026-05-24",
+        "title": "Material Conflict",
+        "sourceDomain": "seattletimes.com",
+        "score": 49.36,
+        "modelProbability": 0.534,
+        "reasons": [
+          "strategic actor or theater",
+          "direct event wording",
+          "high-risk regional context",
+          "penalty: duplicate source row"
+        ],
+        "sourceUrl": "https://www.seattletimes.com/nation-world/nation/details-of-us-iran-deal-begin-to-emerge-after-trump-announces-progress/"
+      },
+      {
+        "id": "1306010628",
+        "date": "2026-05-26",
+        "title": "UNITED ARAB EMIRATES -> EGYPT",
+        "sourceDomain": "globaltimes.cn",
+        "score": 57.99,
+        "modelProbability": 0.0579,
+        "reasons": [
+          "high-mention diplomacy"
+        ],
+        "sourceUrl": "https://www.globaltimes.cn/page/202605/1362008.shtml"
+      },
+      {
+        "id": "1306616743",
+        "date": "2026-05-30",
+        "title": "IRAN",
+        "sourceDomain": "eurasiareview.com",
+        "score": 60.41,
+        "modelProbability": 0.8907,
+        "reasons": [
+          "strategic actor or theater",
+          "high-risk regional context",
+          "penalty: analysis/opinion source",
+          "penalty: duplicate source row"
+        ],
+        "sourceUrl": "https://www.eurasiareview.com/30052026-the-war-above-the-war-how-chinese-satellites-support-iran-analysis/"
+      },
+      {
+        "id": "1306696147",
+        "date": "2025-05-30",
+        "title": "LEBANON -> NURSE",
+        "sourceDomain": "krmg.com",
+        "score": 64.92,
+        "modelProbability": 0.5932,
+        "reasons": [
+          "strategic actor or theater",
+          "direct event wording",
+          "high-risk regional context",
+          "penalty: duplicate source row"
+        ],
+        "sourceUrl": "https://krmg.com/2026/05/30/israeli-strikes-reportedly-pound-near-crusader-built-castle-in-lebanon/"
+      }
+    ]
+  },
+  "topSurfacedEvents": [
+    {
+      "id": "1306306477",
+      "date": "2026-05-28",
+      "title": "ISRAEL -> DEPUTIES",
+      "surfaceScore": 100,
+      "band": "lead",
+      "sourceDomain": "winnipegfreepress.com",
+      "reasons": [
+        "strategic actor or theater",
+        "high-risk regional context"
+      ],
+      "sourceUrl": "https://www.winnipegfreepress.com/world/2026/05/28/israel-has-killed-2-hamas-military-leaders-this-month-but-will-it-change-the-underlying-conflict"
+    },
+    {
+      "id": "1306529040",
+      "date": "2026-05-29",
+      "title": "ISRAELI -> POLICE OFFICER",
+      "surfaceScore": 100,
+      "band": "lead",
+      "sourceDomain": "sana.sy",
+      "reasons": [
+        "strategic actor or theater",
+        "governance or public-safety signal",
+        "high-risk regional context"
+      ],
+      "sourceUrl": "https://sana.sy/en/international/2320112/"
+    },
+    {
+      "id": "1306696351",
+      "date": "2026-05-30",
+      "title": "ISRAEL -> LEBANON",
+      "surfaceScore": 100,
+      "band": "lead",
+      "sourceDomain": "presstv.ir",
+      "reasons": [
+        "strategic actor or theater",
+        "direct event wording",
+        "high-risk regional context"
+      ],
+      "sourceUrl": "https://www.presstv.ir/Detail/2026/05/30/769553/Lebanon-prime-minister-condemns-dangerous-Israeli-escalation-urges-immediate-ceasefire-Hezbollah"
+    },
+    {
+      "id": "1306445276",
+      "date": "2026-05-29",
+      "title": "UKRAINE -> CIVILIAN",
+      "surfaceScore": 100,
+      "band": "lead",
+      "sourceDomain": "europe.chinadaily.com.cn",
+      "reasons": [
+        "strategic actor or theater"
+      ],
+      "sourceUrl": "http://europe.chinadaily.com.cn/a/202605/29/WS6a18ec35a310d6866eb4b599.html"
+    },
+    {
+      "id": "1306360226",
+      "date": "2026-05-28",
+      "title": "VIRGINIA -> PROSECUTOR",
+      "surfaceScore": 100,
+      "band": "lead",
+      "sourceDomain": "13newsnow.com",
+      "reasons": [
+        "direct event wording",
+        "governance or public-safety signal"
+      ],
+      "sourceUrl": "https://www.13newsnow.com/article/news/local/virginia/virginia-assault-weapons-ban-faces-pushback-from-prosecutors/65-8778fde1-3d26-4eab-a8bb-fcc571a76ad2"
+    },
+    {
+      "id": "1306183860",
+      "date": "2026-05-27",
+      "title": "ISRAELI -> MILITANT",
+      "surfaceScore": 100,
+      "band": "lead",
+      "sourceDomain": "irishtimes.com",
+      "reasons": [
+        "strategic actor or theater",
+        "direct event wording",
+        "high-risk regional context"
+      ],
+      "sourceUrl": "https://www.irishtimes.com/world/middle-east/2026/05/27/intensified-idf-airstrikes-in-lebanon-follow-surge-in-hizbullah-drone-attacks/"
+    },
+    {
+      "id": "1306734775",
+      "date": "2026-05-31",
+      "title": "PRESIDENT -> IRAN",
+      "surfaceScore": 100,
+      "band": "lead",
+      "sourceDomain": "khaama.com",
+      "reasons": [
+        "strategic actor or theater",
+        "direct event wording",
+        "high-mention diplomacy"
+      ],
+      "sourceUrl": "https://www.khaama.com/trump-says-any-iran-deal-must-meet-u-s-conditions/"
+    },
+    {
+      "id": "1306579538",
+      "date": "2026-05-29",
+      "title": "PROTESTER",
+      "surfaceScore": 100,
+      "band": "lead",
+      "sourceDomain": "nypost.com",
+      "reasons": [
+        "direct event wording",
+        "governance or public-safety signal",
+        "humanitarian/public-safety signal"
+      ],
+      "sourceUrl": "https://nypost.com/2026/05/29/us-news/nj-gov-blocking-cops-from-helping-feds-at-delaney-hall-protests-union/"
+    },
+    {
+      "id": "1306696358",
+      "date": "2026-05-30",
+      "title": "ISRAEL -> ISRAELI",
+      "surfaceScore": 100,
+      "band": "lead",
+      "sourceDomain": "presstv.ir",
+      "reasons": [
+        "strategic actor or theater",
+        "direct event wording",
+        "high-risk regional context"
+      ],
+      "sourceUrl": "https://www.presstv.ir/Detail/2026/05/30/769548/Israeli-strike-kills-head-of-anaesthesia-department-at-Gaza-hospital"
+    },
+    {
+      "id": "1306056078",
+      "date": "2026-05-26",
+      "title": "RUSSIA -> KIEV",
+      "surfaceScore": 100,
+      "band": "lead",
+      "sourceDomain": "russiaherald.com",
+      "reasons": [
+        "strategic actor or theater"
+      ],
+      "sourceUrl": "http://www.russiaherald.com/news/279078158/the-next-blow-will-be-more-painful-russian-experts-are-signaling-something-bigger-than-retaliation"
+    },
+    {
+      "id": "1306132119",
+      "date": "2026-05-26",
+      "title": "ISRAEL -> GAZA",
+      "surfaceScore": 100,
+      "band": "lead",
+      "sourceDomain": "mirror.co.uk",
+      "reasons": [
+        "strategic actor or theater",
+        "direct event wording",
+        "high-risk regional context"
+      ],
+      "sourceUrl": "https://www.mirror.co.uk/news/world-news/ceasefire-busting-attacks-throughout-middle-37209984"
+    },
+    {
+      "id": "1306734800",
+      "date": "2026-05-31",
+      "title": "ISRAELI -> FIGHTER",
+      "surfaceScore": 100,
+      "band": "lead",
+      "sourceDomain": "albawaba.com",
+      "reasons": [
+        "strategic actor or theater",
+        "governance or public-safety signal",
+        "high-risk regional context"
+      ],
+      "sourceUrl": "https://www.albawaba.com/news/thousands-join-anti-netanyahu-protesters-1628778"
+    },
+    {
+      "id": "1306617011",
+      "date": "2026-05-30",
+      "title": "KYIV -> MILITARY BASE",
+      "surfaceScore": 100,
+      "band": "lead",
+      "sourceDomain": "wandtv.com",
+      "reasons": [
+        "strategic actor or theater",
+        "direct event wording"
+      ],
+      "sourceUrl": "https://www.wandtv.com/news/national/russian-drone-targeting-ukraine-hits-apartment-building-in-romania-injuring-2-officials-say/article_e76bee21-c190-5c96-a2a1-1a672bcd5c3e.html"
+    },
+    {
+      "id": "1306011426",
+      "date": "2026-05-26",
+      "title": "IRAN -> MILITARY",
+      "surfaceScore": 100,
+      "band": "lead",
+      "sourceDomain": "dw.com",
+      "reasons": [
+        "strategic actor or theater",
+        "high-risk regional context"
+      ],
+      "sourceUrl": "https://www.dw.com/en/iran-data-show-partial-restoration-of-internet-connectivity/live-77292206"
+    },
+    {
+      "id": "1306231119",
+      "date": "2026-05-27",
+      "title": "ISRAEL -> IRAN",
+      "surfaceScore": 100,
+      "band": "lead",
+      "sourceDomain": "greanvillepost.com",
+      "reasons": [
+        "strategic actor or theater",
+        "high-risk regional context"
+      ],
+      "sourceUrl": "https://www.greanvillepost.com/2026/05/27/laith-marouf-no-one-saw-this-coming-hezbollah-smashes-idf-frontline/"
+    },
+    {
+      "id": "1306407111",
+      "date": "2026-05-28",
+      "title": "PROTESTER",
+      "surfaceScore": 100,
+      "band": "lead",
+      "sourceDomain": "israelnationalnews.com",
+      "reasons": [
+        "strategic actor or theater",
+        "governance or public-safety signal",
+        "humanitarian/public-safety signal",
+        "high-risk regional context"
+      ],
+      "sourceUrl": "https://www.israelnationalnews.com/news/427780"
+    },
+    {
+      "id": "1305883541",
+      "date": "2026-05-25",
+      "title": "TANKER -> IRAN",
+      "surfaceScore": 100,
+      "band": "lead",
+      "sourceDomain": "newsonjapan.com",
+      "reasons": [
+        "strategic actor or theater",
+        "high-risk regional context"
+      ],
+      "sourceUrl": "https://newsonjapan.com/article/149377.php"
+    },
+    {
+      "id": "1306641590",
+      "date": "2026-05-30",
+      "title": "ISRAELI -> RESIDENTS",
+      "surfaceScore": 100,
+      "band": "lead",
+      "sourceDomain": "jpost.com",
+      "reasons": [
+        "strategic actor or theater",
+        "humanitarian/public-safety signal",
+        "high-risk regional context"
+      ],
+      "sourceUrl": "https://www.jpost.com/israel-news/article-897783"
+    },
+    {
+      "id": "1306579443",
+      "date": "2026-05-29",
+      "title": "LEBANON -> ISRAELI",
+      "surfaceScore": 100,
+      "band": "lead",
+      "sourceDomain": "aa.com.tr",
+      "reasons": [
+        "strategic actor or theater",
+        "direct event wording"
+      ],
+      "sourceUrl": "https://aa.com.tr/en/world/-14-killed-in-attacks-on-southern-lebanon-as-israel-continues-to-violate-us-mediated-ceasefire/3951278"
+    },
+    {
+      "id": "1306268677",
+      "date": "2026-05-28",
+      "title": "IRAN -> MILITARY",
+      "surfaceScore": 100,
+      "band": "lead",
+      "sourceDomain": "businesstoday.in",
+      "reasons": [
+        "strategic actor or theater",
+        "direct event wording"
+      ],
+      "sourceUrl": "https://www.businesstoday.in/world/story/us-strikes-irans-bandar-abbas-ground-control-facility-shoots-down-drones-near-hormuz-533699-2026-05-28"
+    },
+    {
+      "id": "1306480180",
+      "date": "2026-05-29",
+      "title": "RUSSIA -> NATO",
+      "surfaceScore": 100,
+      "band": "lead",
+      "sourceDomain": "londonlovesbusiness.com",
+      "reasons": [
+        "strategic actor or theater",
+        "direct event wording"
+      ],
+      "sourceUrl": "https://londonlovesbusiness.com/explosions-rock-nato-country-as-drone-strikes-apartment-block-in-europe-injuring-two/"
+    },
+    {
+      "id": "1306696167",
+      "date": "2026-05-30",
+      "title": "Material Conflict",
+      "surfaceScore": 100,
+      "band": "lead",
+      "sourceDomain": "krmg.com",
+      "reasons": [
+        "strategic actor or theater",
+        "direct event wording",
+        "high-risk regional context"
+      ],
+      "sourceUrl": "https://krmg.com/2026/05/30/israeli-strikes-reportedly-pound-near-crusader-built-castle-in-lebanon/"
+    },
+    {
+      "id": "1306528537",
+      "date": "2026-05-29",
+      "title": "LAW ENFORCEMENT OFFICER -> RIOTER",
+      "surfaceScore": 100,
+      "band": "lead",
+      "sourceDomain": "cbsnews.com",
+      "reasons": [
+        "strategic actor or theater",
+        "governance or public-safety signal"
+      ],
+      "sourceUrl": "https://www.cbsnews.com/news/judge-temporarily-blocks-justice-department-work-1-7-billion-anti-weaponization-fund/"
+    },
+    {
+      "id": "1306268965",
+      "date": "2026-05-28",
+      "title": "AMERICAN -> IRANIAN",
+      "surfaceScore": 100,
+      "band": "lead",
+      "sourceDomain": "spacewar.com",
+      "reasons": [
+        "strategic actor or theater"
+      ],
+      "sourceUrl": "https://www.spacewar.com/afp/260528014630.9lydrg27.html"
+    },
+    {
+      "id": "1305764929",
+      "date": "2026-05-25",
+      "title": "RUSSIA -> AUTHORITIES",
+      "surfaceScore": 100,
+      "band": "lead",
+      "sourceDomain": "en.philenews.com",
+      "reasons": [
+        "strategic actor or theater",
+        "direct event wording"
+      ],
+      "sourceUrl": "https://en.philenews.com/international/energy-infrastructure-damaged-in-missile-attack-on-russias-belgorod-region-local-authorities-say-live/"
+    }
+  ]
+}

@@ -19,7 +19,7 @@ const TILE_LIGHT = "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.p
 const TILE_ATTR  = '© <a href="https://osm.org">OSM</a> © <a href="https://carto.com">CARTO</a>';
 
 // Hard world bounds — no panning past the edge of the earth
-const WORLD_BOUNDS = L.latLngBounds(L.latLng(-85, -220), L.latLng(85, 220));
+const WORLD_BOUNDS = L.latLngBounds(L.latLng(-85, -180), L.latLng(85, 180));
 
 const CONTINENTS  = ["All", "Americas", "Europe", "Middle East", "Africa", "Asia", "Oceania"];
 const CATEGORIES  = ["All", "Diplomacy", "Conflict", "Econ", "Environment", "Humanitarian", "Science"];
@@ -75,6 +75,14 @@ function eventTitle(event) {
   return event.actor1 !== "Unknown"
     ? `${event.actor1}${event.actor2 && event.actor2 !== "Unknown" ? " -> " + event.actor2 : ""}`
     : event.quadLabel;
+}
+
+function eventSignalScore(event) {
+  return Number.isFinite(event.surfaceScore) ? event.surfaceScore : event.markerRadius * 10;
+}
+
+function eventDisplayRadius(event) {
+  return Number.isFinite(event.surfaceRadius) ? event.surfaceRadius : event.markerRadius;
 }
 
 function scoreRelatedSignal(target, candidate) {
@@ -260,6 +268,7 @@ function MapView({ events, selectedEvent, onSelectEvent }) {
         attribution: TILE_ATTR,
         subdomains: "abcd",
         maxZoom: 19,
+        bounds: WORLD_BOUNDS,
         noWrap: true,        // prevents world-tile repetition
       }).addTo(map);
     };
@@ -290,12 +299,12 @@ function MapView({ events, selectedEvent, onSelectEvent }) {
     layerRef.current.clearLayers();
 
     // Sort ascending so most significant render on top in SVG layer order
-    const sorted = [...events].sort((a, b) => a.markerRadius - b.markerRadius);
+    const sorted = [...events].sort((a, b) => eventSignalScore(a) - eventSignalScore(b));
 
-    // Top 5 highest-mentions events get an SVG pulse ring colored by theme
+    // Top 5 surfaced events get an SVG pulse ring colored by theme
     const topEventIds = new Set(
       events
-        .sort((a, b) => b.markerRadius - a.markerRadius)
+        .sort((a, b) => eventSignalScore(b) - eventSignalScore(a))
         .slice(0, 5)
         .map((e) => e.id)
     );
@@ -304,9 +313,10 @@ function MapView({ events, selectedEvent, onSelectEvent }) {
       const fill    = THEME_COLORS[ev.theme] || "#4F46E5";
       const stroke  = "#FFFFFF";
       const opacity = ev.severity === "low" ? 0.60 : ev.severity === "medium" ? 0.76 : 0.90;
+      const radius  = eventDisplayRadius(ev);
 
       const marker = L.circleMarker([ev.lat, ev.lon], {
-        radius:      ev.markerRadius,
+        radius,
         fillColor:   fill,
         color:       stroke,
         weight:      1.5,
@@ -318,7 +328,7 @@ function MapView({ events, selectedEvent, onSelectEvent }) {
         : ev.quadLabel;
 
       marker.bindTooltip(
-        `<strong>[${ev.theme}] ${actorLine}</strong><br/>${ev.location || ev.country}<br/>Hope Index: <strong>${ev.hopeScore}</strong>`,
+        `<strong>[${ev.theme}] ${actorLine}</strong><br/>${ev.location || ev.country}<br/>Signal: <strong>${Math.round(eventSignalScore(ev))}</strong>`,
         { sticky: true, direction: "top", html: true }
       );
       marker.on("click", () => onSelectEvent(ev));
@@ -327,7 +337,7 @@ function MapView({ events, selectedEvent, onSelectEvent }) {
       // Pulse ring: second circleMarker, transparent fill, animated via CSS
       if (topEventIds.has(ev.id)) {
         const ring = L.circleMarker([ev.lat, ev.lon], {
-          radius:      ev.markerRadius,
+          radius,
           fillColor:   "transparent",
           color:       fill,
           weight:      1.8,
@@ -464,9 +474,10 @@ function FilterPanel({ filters, onFilter, filteredEvents, selectedEvent, onSelec
 
 function EventRow({ event, selected, onClick }) {
   const title = eventTitle(event);
+  const signalScore = Math.round(eventSignalScore(event));
 
-  const scoreColor = event.hopeScore >= 70 ? "#16A34A" : event.hopeScore < 40 ? "#DC2626" : "#D97706";
-  const scoreBg    = event.hopeScore >= 70 ? "rgba(34,197,94,.12)" : event.hopeScore < 40 ? "rgba(239,68,68,.12)" : "rgba(245,158,11,.12)";
+  const scoreColor = signalScore >= 72 ? "#DC2626" : signalScore >= 52 ? "#D97706" : "#6B7280";
+  const scoreBg    = signalScore >= 72 ? "rgba(239,68,68,.12)" : signalScore >= 52 ? "rgba(245,158,11,.12)" : "rgba(107,114,128,.12)";
 
   return (
     <div
@@ -482,7 +493,7 @@ function EventRow({ event, selected, onClick }) {
         <div className="erow-title" title={title}>{title}</div>
         <div className="erow-meta">{event.location || event.country} · {event.date}</div>
       </div>
-      <span className="hope-badge" style={{
+      <span className="hope-badge" title={event.surfaceReasons?.[0] || "Signal score"} style={{
         fontSize: "10px",
         fontFamily: "var(--font-mono)",
         fontWeight: "700",
@@ -493,7 +504,7 @@ function EventRow({ event, selected, onClick }) {
         marginLeft: "8px",
         flexShrink: 0
       }}>
-        {event.hopeScore}
+        {signalScore}
       </span>
     </div>
   );
@@ -880,7 +891,7 @@ function EventDetail({ event, events, onClose, onSelectEvent, apiKey, aiReady })
               <div className="ai-no-key-heading">Unlock evidence-linked event probes.</div>
               <div className="ai-no-key-body">
                 Connect an Anthropic API key to fetch source evidence, connect related events, and generate cause hypotheses,
-                actor incentives, impact paths, and calibrated next-step forecasts.
+                actor incentives, impact paths, and evidence-bounded scenario outlooks.
               </div>
               <a
                 href={GITHUB_URL + "#ai-analysis"}
@@ -974,11 +985,16 @@ function App() {
     return () => { cancelled = true; clearTimeout(slowTimer); };
   }, [filters.days]);
 
-  const filteredEvents = useMemo(() => events.filter((e) => {
-    if (filters.continent !== "All" && e.continent !== filters.continent) return false;
-    if (filters.category !== "All" && e.theme !== filters.category) return false;
-    return true;
-  }), [events, filters.continent, filters.category]);
+  const filteredEvents = useMemo(() => events
+    .filter((e) => {
+      if (filters.continent !== "All" && e.continent !== filters.continent) return false;
+      if (filters.category !== "All" && e.theme !== filters.category) return false;
+      return true;
+    })
+    .sort((a, b) =>
+      eventSignalScore(b) - eventSignalScore(a) ||
+      Number(b.numMentions ?? 0) - Number(a.numMentions ?? 0)
+    ), [events, filters.continent, filters.category]);
 
   const { globalHopeAverage, eventCount } = useMemo(() => {
     const validEvents = filteredEvents.filter((e) => e.hopeScore !== undefined);

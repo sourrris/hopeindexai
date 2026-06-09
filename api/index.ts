@@ -201,6 +201,7 @@ const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
 const SOURCE_FETCH_TIMEOUT = 5_000;
 const SOURCE_TEXT_LIMIT = 3_500;
 const RELATED_SIGNAL_LIMIT = 12;
+const DAY_MS = 86_400_000;
 
 // ── In-memory cache ───────────────────────────────────────────────────────────
 
@@ -322,6 +323,38 @@ async function loadEventDataset(): Promise<{ events: GdeltEvent[]; updated?: str
     events: Array.isArray(parsed.events) ? parsed.events : [],
     updated: typeof parsed.updated === "string" ? parsed.updated : undefined,
   };
+}
+
+function surfaceSortScore(event: any): number {
+  return Number.isFinite(event?.surfaceScore) ? Number(event.surfaceScore) : Number(event?.markerRadius ?? 0);
+}
+
+function parseEventDateMs(date: unknown): number | null {
+  if (typeof date !== "string") return null;
+  const match = date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const ms = Date.UTC(year, month - 1, day);
+  if (!Number.isFinite(ms)) return null;
+
+  return new Date(ms).toISOString().slice(0, 10) === date ? ms : null;
+}
+
+function filterEventsByDatasetWindow(events: GdeltEvent[], days: number): GdeltEvent[] {
+  const datedEvents = events
+    .map((event) => ({ event, ms: parseEventDateMs(event.date) }))
+    .filter((row): row is { event: GdeltEvent; ms: number } => row.ms !== null);
+
+  if (datedEvents.length === 0) return events;
+
+  const latestMs = Math.max(...datedEvents.map((row) => row.ms));
+  const cutoffMs = latestMs - Math.max(0, days - 1) * DAY_MS;
+  return datedEvents
+    .filter((row) => row.ms >= cutoffMs && row.ms <= latestMs)
+    .map((row) => row.event);
 }
 
 async function loadEscalationModel(): Promise<any | null> {
@@ -1327,19 +1360,17 @@ app.get("/api/ai-status", (c) => {
 });
 
 app.get("/api/events", async (c) => {
-  const days = Math.max(1, Math.min(30, parseInt(c.req.query("days") ?? "7", 10)));
+  const requestedDays = Number.parseInt(c.req.query("days") ?? "7", 10);
+  const days = Number.isFinite(requestedDays) ? Math.max(1, Math.min(30, requestedDays)) : 7;
 
   try {
     const dataset = await loadEventDataset();
-    let events = dataset.events;
+    let events = filterEventsByDatasetWindow(dataset.events, days);
 
-    // Filter events by day cutoff if requested < 7 days
-    if (days < 7) {
-      const cutoff = new Date();
-      cutoff.setDate(cutoff.getDate() - days);
-      const cutoffStr = cutoff.toISOString().split("T")[0]; // YYYY-MM-DD
-      events = events.filter((e: any) => e.date >= cutoffStr);
-    }
+    events = [...events].sort((a: any, b: any) =>
+      surfaceSortScore(b) - surfaceSortScore(a) ||
+      Number(b.numMentions ?? 0) - Number(a.numMentions ?? 0)
+    );
 
     c.header("X-Cache", "STATIC");
     return c.json({ events, count: events.length, updated: dataset.updated });
@@ -1427,7 +1458,7 @@ app.post("/api/analyze", async (c) => {
       `## Actor psychology and game theory\n` +
       `Explain incentives, fears, leverage, audience costs, bargaining position, and likely decision traps.\n\n` +
       `## What happens next\n` +
-      `Forecast 24-72 hours, 1-2 weeks, and 1-3 months. Include probability ranges and triggers that would change the forecast.\n\n` +
+      `Give scenario outlooks for 24-72 hours, 1-2 weeks, and 1-3 months. Include probability ranges and triggers that would change your assessment.\n\n` +
       `## Impact map\n` +
       `Separate local safety/humanitarian, policy/diplomacy, finance/markets/supply chains, social psychology/media narrative.\n\n` +
       `## Linked events\n` +

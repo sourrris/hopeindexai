@@ -1,489 +1,204 @@
-# HopeIndexAI Phased Roadmap
+# HopeIndexAI Phases
 
-This roadmap turns HopeIndexAI from a small event map into a continuously learning intelligence system.
+This file is the build plan.
 
-The core idea is simple: do not scale to huge data first. First build a clean machine that can understand events, actors, sources, predictions, and feedback. Then scale the amount of data.
+Keep it simple: the phase doc should answer what we are doing now, what comes next, and what proof says a phase is done. The bigger product idea lives in [IDEA.md](./IDEA.md). The project story lives in [CASE_STUDY.md](../CASE_STUDY.md).
 
-## North Star
+## Current Rule
 
-HopeIndexAI should answer:
+HopeIndexAI is a triage prototype, not a verified forecasting system.
 
-- What happened?
-- Who are the important actors?
-- What incentives and constraints do those actors have?
-- What might happen next?
-- What evidence supports that view?
-- Was the prediction useful after the fact?
+In simple ML terms: the model is the student, and human labels are the answer key. LLM/Codex labels are useful practice notes, but only human-reviewed labels can prove improvement.
 
-Target architecture:
+## Phase Status
 
-```text
-raw events
--> cleaned events
--> deduped clusters
--> resolved actors
--> source credibility
--> historical actor context
--> risk prediction
--> analyst/user feedback
--> improved model
+| Phase | Name | Status | Proof |
+| --- | --- | --- | --- |
+| 0 | Baseline audit | Done | App and data shape are documented |
+| 1 | Measured MVP | Active | `bun run test:all` passes |
+| 2 | Human review loop | Next | 100 human-reviewed labels |
+| 3 | Storage and ingestion | Planned | Public data becomes an export |
+| 4 | Entity resolution | Backlog | Messy actors map to stable IDs |
+| 5 | Source and claim quality | Backlog | Important claims have evidence |
+| 6 | Actor context in probes | Backlog | Probes use actor profiles carefully |
+| 7 | Feedback loop | Backlog | User feedback feeds eval data |
+| 8 | Model upgrades | Later | New model beats baseline on human labels |
+| 9 | Production scale | Later | More data improves measured performance |
+
+## How To Update Phases
+
+When a phase changes:
+
+1. Update the status table.
+2. Update the phase notes below.
+3. Add the proof: command, report, or artifact.
+
+Do not mark a phase done because it feels done. Mark it done when the proof exists.
+
+## Phase 0: Baseline Audit
+
+Status: Done.
+
+Goal: Understand what exists before adding complexity.
+
+Done now:
+
+- React + Leaflet map exists.
+- Hono API exists in `api/index.ts`.
+- Static event data exists in `public/data/events.json`.
+- Local Bun and Vercel paths are documented.
+- Ontology docs and validation scripts exist.
+
+Proof:
+
+```bash
+bun run dev
 ```
 
-## Phase 0: Current State
+## Phase 1: Measured MVP
 
-Goal: Understand what exists today.
+Status: Active.
 
-Current assets:
+Goal: Make the prototype measurable before claiming it improved.
 
-- React + Leaflet event map.
-- `/api/events` serving static enriched GDELT-style events.
-- `public/data/events.json` with 1,500 events.
-- `public/data/escalation-model.json` with a logistic regression escalation model.
-- `data/profiles.jsonl` with 90 historical/public actor profiles.
-- `data/sources.jsonl`, `data/claims.jsonl`, and queue/progress files for research tracking.
+Built now:
 
-Current limits:
+- `/api/events` serves the checked-in event slice.
+- Event windows filter relative to the latest date in the dataset.
+- Event order uses `surfaceScore`, with `markerRadius` as fallback.
+- Ontology validation exists.
+- API smoke testing exists.
+- TypeScript checking exists.
+- Phase 1 eval exists.
 
-- 1,500 events is too small for serious ML.
-- Static JSON is fine for demo, not for historical scale.
-- Historical profiles are not yet connected to event analysis.
-- Source metadata needs stronger validation.
-- Entity names are messy, for example `ISRAEL`, `ISRAELI`, `GOVERNMENT`, and `THE US`.
-- Current labels are weak labels from future GDELT rows, not human-confirmed ground truth.
+Current evidence:
+
+```text
+Events: 1,500
+Labels: 120
+Human-reviewed labels: 0
+LLM/Codex-reviewed labels: 120
+Human labels needed for improvement claim: 100
+```
 
 Done means:
 
-- Existing files are validated.
-- The team understands what is demo-grade versus production-grade.
+- `bun run test:all` passes.
+- The eval report says whether improvement can or cannot be claimed.
+- No non-human label is marked `humanReviewed: true`.
+- Root and `public/` frontend files stay in sync.
 
-## Phase 1: Ontology Foundation
+Proof:
 
-Goal: Define the real-world objects the system understands.
-
-In simple terms, an ontology is the map of the real world inside the app. Instead of only storing rows, the system knows about actors, events, sources, locations, claims, predictions, and feedback.
-
-Core object types:
-
-```text
-Actor
-Event
-EventCluster
-Location
-Source
-Claim
-Prediction
-AnalystAssessment
-ActorProfile
-Watchlist
+```bash
+bun run test:all
 ```
 
-Key links:
+## Phase 2: Human Review Loop
 
-```text
-Actor -> participates in -> Event
-Event -> belongs to -> EventCluster
-Event -> occurs at -> Location
-Event -> reported by -> Source
-Prediction -> explains -> Event or EventCluster
-AnalystAssessment -> evaluates -> Prediction
-ActorProfile -> describes -> Actor
-Claim -> supported by -> Source
+Status: Next.
+
+Goal: Build the real answer key.
+
+Why it matters:
+
+- Without human labels, we have a demo and provisional metrics.
+- With human labels, we can test whether the ranking truly beats the baseline.
+
+Step-by-step:
+
+1. List the review queue.
+2. Review 20 to 30 labels by hand.
+3. Save reviewer name with `PHASE1_REVIEWER`.
+4. Rerun eval.
+5. Repeat until 100 human-reviewed labels exist.
+
+Commands:
+
+```bash
+bun run review:phase1:human -- --list
+PHASE1_REVIEWER=your-name bun run review:phase1:human -- --limit=30
+bun run eval:phase1
 ```
-
-Deliverables:
-
-- Add ontology schema files.
-- Define IDs and relationships.
-- Decide required fields for each object type.
-- Document how event rows map into ontology objects.
-
-Phase 1 implementation:
-
-- Schemas live in `schemas/ontology/v1/`.
-- Developer guide lives in `docs/ontology/README.md`.
-- Current GDELT row mapping lives in `docs/ontology/gdelt-event-mapping.md`.
-- Validation command: `bun run ontology:validate`.
 
 Done means:
 
-- A new developer can look at the schema and understand the world model.
-- Every event can be mapped to actors, location, source, and cluster.
+- At least 100 labels have `labelSource: "human"` and `humanReviewed: true`.
+- The reviewer actually checked the event/source context.
+- `bun run eval:phase1` reports against human-reviewed labels.
 
-## Phase 2: Data Storage Upgrade
+## Phase 3: Storage And Ingestion
 
-Goal: Stop treating browser JSON as the main data store.
+Status: Planned.
 
-Recommended local structure:
+Goal: Stop treating `public/data/events.json` as the source of truth.
+
+Why it matters:
+
+- The browser needs a small fast file.
+- Training and evaluation need larger historical data.
+- Raw data must stay available so mistakes can be fixed later.
+
+Step-by-step:
+
+1. Create a processed-data folder structure.
+2. Keep public browser data as an export only.
+3. Add a repeatable ingestion script for a date range.
+4. Add deterministic dedupe and public-slice export.
+
+Target structure:
 
 ```text
-data/raw/          original downloaded archives and source records
-data/processed/    cleaned and normalized events
-data/features/     ML-ready feature tables
-data/models/       trained model artifacts
-data/feedback/     user and analyst corrections
-public/data/       small browser-ready slices only
+data/raw/
+data/processed/
+data/features/
+data/models/
+data/feedback/
+public/data/
 ```
-
-Recommended storage:
-
-- Keep JSON for small browser files.
-- Use JSONL for append-only logs.
-- Use DuckDB or Parquet for large historical event data.
-
-Why this matters:
-
-- The browser should load only what it needs.
-- Training needs more history than the UI needs.
-- Raw data must be preserved so mistakes can be fixed later.
-
-Deliverables:
-
-- Create folder structure.
-- Define file naming conventions.
-- Add scripts that separate raw, processed, features, models, and public slices.
 
 Done means:
 
-- `public/data/events.json` is no longer the source of truth.
-- The app can still load a small fast slice.
-- ML scripts can train from processed historical data.
+- `public/data/events.json` is generated from processed data.
+- Re-running ingestion creates stable output.
+- The app still loads quickly.
 
-## Phase 3: Event Ingestion Pipeline
+## Backlog Phases
 
-Goal: Move from 1,500 static events to repeatable event collection.
+Phase 4: Entity resolution.
+Map messy names like `ISRAEL`, `ISRAELI`, `IDF`, and `Israeli government` to stable actor IDs.
 
-Pipeline:
+Phase 5: Source and claim quality.
+Validate URLs, flag weak sources, and connect important claims to evidence.
 
-```text
-fetch GDELT archives
--> parse rows
--> normalize fields
--> filter invalid records
--> dedupe repeated articles/events
--> classify theme
--> score severity
--> save processed events
--> export small public slice
-```
+Phase 6: Actor context in probes.
+Use actor profiles for incentives and constraints, while labeling that context as interpretation.
 
-Scale milestones:
+Phase 7: Feedback loop.
+Let users mark wrong actor, wrong severity, false alarm, missed escalation, and source-check issues.
 
-```text
-10k events      pipeline sanity check
-100k events     useful product testing
-1M events       real model training begins
-10M events      serious backtesting
-100M+ events    warehouse-scale architecture
-```
+Phase 8: Model upgrades.
+Try better models only after the human label loop is trustworthy.
 
-Do not target billions until the model proves value at smaller scale.
+Phase 9: Production scale.
+Scale data volume only after more data improves measured performance.
 
-Deliverables:
+## Next Three Moves
 
-- Ingestion script can fetch a date range.
-- Deduplication logic exists.
-- Processed output is stable and documented.
-- Public export keeps only the needed fields.
+Do these before adding new big features:
 
-Done means:
-
-- Re-running ingestion produces the same kind of output.
-- The app can load a recent slice while ML can access a larger history.
-
-## Phase 4: Entity Resolution
-
-Goal: Teach the system that messy names can refer to the same real actor.
-
-Examples:
-
-```text
-ISRAEL
-ISRAELI
-Israeli government
-IDF
-Netanyahu administration
-```
-
-These should be linked with confidence, not treated as totally separate actors.
-
-Deliverables:
-
-- Create actor alias tables.
-- Add country and organization mappings.
-- Add confidence scores for actor matching.
-- Connect matched actors to `ActorProfile` records when possible.
-
-Done means:
-
-- Event actors resolve to stable actor IDs.
-- The model can count actor history correctly.
-- The UI can show cleaner actor names.
-
-## Phase 5: Source Quality And Claims
-
-Goal: Make confidence follow evidence.
-
-Current issue:
-
-- Many source rows are structurally valid but not evidence-strong enough.
-- Some book entries point to Wikipedia URLs.
-- Some source URLs are empty.
-
-Source quality ladder:
-
-```text
-official / primary source       strongest
-academic source or serious book strong
-major news archive              medium to strong
-Wikipedia                       useful pointer, not final evidence
-unknown blog                    weak
-```
-
-Every important claim should have:
-
-```text
-claim
-source IDs
-evidence summary
-confidence
-what would change the confidence
-```
-
-Deliverables:
-
-- Add a source validator.
-- Flag empty URLs and placeholder URLs.
-- Add claim-to-source references.
-- Mark weak claims as `needs_review`.
-
-Done means:
-
-- Confidence labels are evidence-driven.
-- Weak or unsourced claims are visible instead of hidden.
-
-## Phase 6: Connect Actor Profiles To Events
-
-Goal: Use historical actor context inside event analysis.
-
-Example:
-
-```text
-Event: Israeli military action in Gaza
-Matched actor: Israel
-Actor profile context:
-  - security incentives
-  - domestic pressure
-  - deterrence logic
-  - historical escalation patterns
-Prediction:
-  - 72h escalation risk
-  - reasons and uncertainty
-```
-
-Why this matters:
-
-- Events alone say what happened.
-- Actor profiles help explain why it may have happened and what the actor may do next.
-
-Deliverables:
-
-- Match event actors to profile IDs.
-- Add actor priors to `/api/probe` or `/api/analyze`.
-- Show evidence and confidence in the UI.
-
-Done means:
-
-- Briefings include actor incentives, constraints, and likely moves.
-- The app separates fact from interpretation.
-
-## Phase 7: Feedback Loop And Continuous Learning
-
-Goal: Let the system learn from corrections.
-
-Feedback actions:
-
-```text
-Useful
-Not useful
-Wrong actor
-Wrong severity
-False alarm
-Missed escalation
-Needs source check
-```
-
-Storage:
-
-```text
-data/feedback/assessments.jsonl
-```
-
-Learning loop:
-
-```text
-new events
--> predictions
--> user/analyst feedback
--> evaluation dataset
--> retrain candidate model
--> compare against current model
--> deploy only if better
-```
-
-Important rule:
-
-Do not let the model update itself blindly. Continuous learning needs review gates, otherwise the system can learn bad habits from noisy feedback.
-
-Deliverables:
-
-- Add feedback API route.
-- Add feedback buttons in the event detail panel.
-- Store feedback as append-only JSONL.
-- Build an evaluation script that reads feedback.
-
-Done means:
-
-- Every prediction can be judged after the fact.
-- The model has a path to improve from real usage.
-
-## Phase 8: Model Improvement
-
-Goal: Improve prediction quality while keeping the model explainable.
-
-Model sequence:
-
-```text
-v1 logistic regression baseline
-v2 gradient boosting / tree model
-v3 temporal sequence features
-v4 graph features from actor-event networks
-v5 LLM-assisted explanation, not raw prediction
-```
-
-Metrics to track:
-
-```text
-precision
-recall
-false alarms
-missed escalations
-AUC
-calibration
-performance by region
-performance by event type
-```
-
-Plain meaning:
-
-- Precision: when the system warns, how often is it right?
-- Recall: of real escalations, how many did it catch?
-- Calibration: when it says 70 percent risk, does that happen about 70 percent of the time?
-
-Deliverables:
-
-- Add evaluation reports.
-- Compare old model versus new model before replacing.
-- Track metrics by region and event type.
-
-Done means:
-
-- A model update must prove it is better before deployment.
-- The team can see where the model performs poorly.
-
-## Phase 9: Analyst Workflow
-
-Goal: Make the product operational, not just informational.
-
-Workflow:
-
-```text
-see global map
--> open risky cluster
--> read source-backed brief
--> inspect actor incentives
--> compare similar historical cases
--> mark assessment
--> add to watchlist
--> track over 72 hours
-```
-
-Deliverables:
-
-- Event cluster view.
-- Watchlist.
-- Assessment history.
-- Source evidence panel.
-- Historical comparison panel.
-
-Done means:
-
-- A user can make and track a real intelligence judgment inside the app.
-
-## Phase 10: Scale And Production Readiness
-
-Goal: Scale only after the data and learning loop work.
-
-Scale path:
-
-```text
-1,500 events     demo
-100k events      better product testing
-1M events        real model training
-10M events       serious backtesting
-100M+ events     dedicated warehouse
-billions         only after proven value
-```
-
-Production concerns:
-
-- Data versioning.
-- Backfills.
-- Model registry.
-- Access control.
-- Audit logs.
-- Monitoring.
-- Cost controls.
-- Reproducible training.
-
-Done means:
-
-- Larger data volume improves the model instead of adding noise.
-- The app can explain where every prediction came from.
-
-## Immediate Next Steps
-
-Recommended implementation order:
-
-```text
-1. Add ontology schema files.
-2. Add source validator.
-3. Add event storage structure.
-4. Add actor alias/entity resolution layer.
-5. Connect profiles to event analysis.
-6. Add feedback capture.
-7. Retrain model with richer features.
-```
+1. Human-review the first 30 labels.
+2. Rerun `bun run eval:phase1`.
+3. Add a small review UI or improve the CLI if terminal review is too slow.
 
 ## Decision Rule
 
-When choosing what to build next, use this rule:
-
 ```text
-If it improves evidence, entity clarity, feedback, or evaluation, do it early.
-If it only adds more data volume, do it after the pipeline is trustworthy.
+Evidence first.
+Entity clarity second.
+Scale third.
 ```
 
-Bayesian summary:
+Bayesian translation: start with the belief that more data helps, then update that belief when noisy labels, duplicate rows, or bad actor names hurt quality.
 
-```text
-Prior: more data will improve the model.
-Evidence: noisy data, weak labels, and messy entities can hurt the model.
-Updated belief: better structured and better labeled data should come before massive scale.
-```
-
-Game-theory summary:
-
-```text
-The product should not only ask what happened.
-It should ask what each actor wants, what limits them, what move they may make next, and what evidence would prove us wrong.
-```
+Game-theory translation: ask what each actor wants, what limits them, and what move would make sense only if their incentives are different from our current guess.

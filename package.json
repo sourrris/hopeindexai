@@ -11,13 +11,22 @@
     "sync": "bun scripts/sync.ts",
     "enrich": "bun pipeline/enrich.ts",
     "train": "bun pipeline/train.ts",
+    "surface:phase1": "bun scripts/calibrate_phase1_surface.ts",
+    "review:phase1:codex": "bun scripts/apply_phase1_codex_review.ts",
+    "review:phase1:human": "bun scripts/review_phase1_human.ts",
+    "review:phase1:llm": "bun scripts/review_phase1_with_llm.ts",
+    "eval:phase1": "bun scripts/eval_phase1.ts",
     "ontology:validate": "bun scripts/validate_ontology_phase1.ts",
-    "test:vercel": "bun test-handler.mjs"
+    "typecheck": "tsc --noEmit",
+    "test:smoke": "bun scripts/smoke_api.ts",
+    "test:all": "bun run typecheck && bun run test:smoke && bun run ontology:validate && bun run eval:phase1",
+    "serve:vercel": "bun test-handler.mjs"
   },
   "dependencies": {
     "hono": "^4"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "typescript": "^5.9.3"
   }
 }

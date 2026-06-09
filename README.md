@@ -1,72 +1,94 @@
 # HopeIndexAI
 
-Real-time geopolitical event intelligence. Live GDELT data classified into conflict and cooperation, mapped globally, filterable by region and severity. Click any event for an AI-powered briefing covering economic ripple effects, cultural impact, and escalation outlook.
+Human-in-the-loop geopolitical event triage from noisy public data.
 
-## Stack
+HopeIndexAI maps a small GDELT-style event slice, ranks which events deserve attention, and keeps model output separate from human-reviewed ground truth. It is a triage prototype, not a verified forecasting system.
 
-- **Frontend** — React 18 (CDN), Leaflet, Geist font
-- **Backend** — Bun + Hono (TypeScript), GDELT proxy with 15-min cache
-- **AI** — Claude (Anthropic) via server-side key, never exposed to the browser
-- **Data** — [GDELT Project](https://www.gdeltproject.org) v2 export stream
+In simple ML terms: the model is the student, and human labels are the answer key.
 
-## Quick start
+## Docs
+
+- [docs/PHASES.md](./docs/PHASES.md) - step-by-step build plan and phase status.
+- [docs/IDEA.md](./docs/IDEA.md) - bigger product idea and reasoning frame.
+- [CASE_STUDY.md](./CASE_STUDY.md) - project story, tradeoffs, and interview narrative.
+- [docs/ontology/README.md](./docs/ontology/README.md) - ontology notes and event mapping.
+
+## Quick Start
 
 ```bash
 git clone https://github.com/sourrrish/hopeindexai
 cd hopeindexai
 bun install
-```
-
-Copy the example env file and add your key (see [AI analysis](#ai-analysis) below):
-
-```bash
-cp .env.example .env
-```
-
-Then start the server:
-
-```bash
 bun run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
 
-**Node.js alternative** (no Bun):
+Optional AI analysis:
 
 ```bash
-npm install hono fflate
-npx tsx server.ts
+cp .env.example .env
+# add ANTHROPIC_API_KEY to .env
+bun run dev
 ```
 
----
+## Commands
 
-## AI analysis
-
-HopeIndexAI uses Claude to generate expert geopolitical briefings for individual events — covering immediate context, economic implications, cultural impact, and regional ripple effects.
-
-### Setup
-
-1. Sign up at [console.anthropic.com](https://console.anthropic.com)
-2. Go to **API Keys** and create a new key
-3. Open your `.env` file and set:
-
-```env
-ANTHROPIC_API_KEY=sk-ant-your-key-here
+```bash
+bun run dev                 # local app at http://localhost:3000
+bun run typecheck           # TypeScript check
+bun run test:smoke          # API smoke test
+bun run ontology:validate   # ontology mapping validation
+bun run eval:phase1         # baseline vs candidate eval
+bun run test:all            # full lightweight quality gate
 ```
 
-4. Restart the server (`bun run dev`)
+Phase 1 review loop:
 
-That's it. Click any event on the map to open the detail panel, then hit **Analyze Event**.
+```bash
+bun run review:phase1:human -- --list
+PHASE1_REVIEWER=your-name bun run review:phase1:human -- --limit=30
+bun run eval:phase1
+```
 
-### How it works
+## Current Status
 
-The key lives on the server — it is never sent to the browser or logged. When you click **Analyze Event**, the frontend calls `/api/analyze`, the server reads `ANTHROPIC_API_KEY` from the environment, and returns the analysis. The key never leaves your machine.
+- 1,500 public event rows.
+- 120 reviewed labels.
+- 120 LLM/Codex-reviewed labels.
+- 0 human-reviewed labels.
+- 100 human-reviewed labels required before claiming model improvement.
 
----
+The current metrics are useful for product triage, but they are not final proof. LLM-reviewed labels are like practice notes; human-reviewed labels are the answer key.
 
-## Data attribution
+## Architecture
 
-Event data is sourced from the **[GDELT Project](https://www.gdeltproject.org)**. HopeIndexAI is not affiliated with GDELT. Events reflect media-reported incidents and should not be treated as independently verified ground truth.
+```text
+public/data/events.json
+-> Hono API
+-> event window filtering
+-> surfaceScore sorting
+-> React + Leaflet map
+-> event detail and AI probe flow
+
+data/eval/phase1_labels.jsonl
+-> eval script
+-> baseline vs candidate metrics
+-> proof/no-proof report
+```
+
+Local development uses `server.ts`.
+Vercel uses `api/index.ts` and static files from `public/`.
+
+Root `index.html`/`app.js` and `public/index.html`/`public/app.js` must stay in sync:
+
+```bash
+bun run sync
+```
+
+## Data Attribution
+
+Event data is sourced from the [GDELT Project](https://www.gdeltproject.org). HopeIndexAI is not affiliated with GDELT. Events are media-derived signals and should not be treated as independently verified ground truth.
 
 ## License
 

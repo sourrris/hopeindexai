@@ -1,22 +1,39 @@
 # AGENTS.md
 
-This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
+This file gives coding-agent guidance for working in this repository.
+
+## Product frame
+
+HopeIndexAI is a human-in-the-loop geopolitical event triage prototype. It takes noisy public event rows, maps them, ranks which signals deserve attention, and measures whether that ranking beats a baseline. Do not describe it as a verified forecasting system.
+
+In simple ML terms: the model is the student, and human labels are the answer key. LLM/Codex-reviewed labels are useful for triage, but only human-reviewed labels can support a real improvement claim.
 
 ## Commands
 
 ```bash
-# Local dev (requires Bun)
+# Local dev
 bun install
 bun run dev        # starts server at http://localhost:3000
 
-# Alternative without Bun
-npm install hono fflate
-npx tsx server.ts
+# Review checks
+bun run typecheck
+bun run test:smoke
+bun run ontology:validate
+bun run eval:phase1
+bun run test:all
 
-# Vercel deployment is automatic on push to main
+# Phase 1 review/eval loop
+bun run review:phase1:codex
+bun run review:phase1:human -- --list
+PHASE1_REVIEWER=your-name bun run review:phase1:human -- --fast
+bun run surface:phase1
+
+# Alternative without Bun
+npm install hono
+npx tsx server.ts
 ```
 
-There are no test, lint, or build commands — the project has no test suite, no linter config, and no frontend build step.
+There is no frontend build step and no linter config. The current lightweight quality gate is `bun run test:all`, which runs TypeScript checking, API smoke testing, ontology validation, and Phase 1 eval.
 
 ## Architecture
 
@@ -24,48 +41,67 @@ There are no test, lint, or build commands — the project has no test suite, no
 
 | Context | Entry point | Static files | API routing |
 |---------|-------------|--------------|-------------|
-| Local (Bun) | `server.ts` | Served inline by `server.ts` | `src/app.ts` |
-| Vercel | `api/index.ts` | `public/` via Vercel CDN | `src/app.ts` |
+| Local Bun | `server.ts` | root `index.html` + `app.js` | `api/index.ts` |
+| Vercel | `api/index.ts` | `public/` via Vercel CDN | `api/index.ts` |
 
-`server.ts` is Bun-only (uses `Bun.file()`). `api/index.ts` is the Vercel serverless function — it adapts Node.js `IncomingMessage`/`ServerResponse` to a Web API `Request`/`Response` before calling `app.fetch()`.
+`server.ts` is Bun-only because it uses `Bun.file()` for local static files. `api/index.ts` exports the Hono app and the Vercel handler. The handler adapts Node.js `IncomingMessage`/`ServerResponse` to a Web API `Request`/`Response` before calling `app.fetch()`.
 
 ### File duality: root vs `public/`
 
-`index.html` + `app.js` (project root) are used for local dev.
+`index.html` + `app.js` are used for local dev.
 `public/index.html` + `public/app.js` are served by Vercel in production.
 
-These two pairs are **identical** and must be kept in sync manually.
+These two pairs must stay identical. Use:
 
-### Backend: `src/app.ts`
+```bash
+bun run sync
+```
 
-Single Hono app file. Three routes:
+or edit both copies carefully.
 
-- `GET /api/ai-status` — returns `{ ready: boolean }` based on whether `ANTHROPIC_API_KEY` env var is set
-- `GET /api/events?days=1-30` — fetches 10 GDELT v2 export ZIP files in parallel, decompresses with `fflate.unzipSync`, parses tab-separated CSV, and returns up to 1,500 events sorted by severity. Has a 15-minute in-memory cache keyed by `days`.
-- `POST /api/analyze` — calls Codex (`Codex-sonnet-4-6`) with GDELT event data. API key comes from `ANTHROPIC_API_KEY` env var; client can supply a fallback via request body `apiKey`.
+### Backend: `api/index.ts`
 
-GDELT data model: events are classified as `doom` (negative Goldstein scale) or `bloom` (positive). GDELT uses FIPS country codes (not ISO), so the `FIPS_CONTINENT` map in `src/app.ts` handles the country→continent mapping — key differences from ISO include: `UK` (not GB), `JA` (not JP), `RS`=Russia (not Serbia), `CH`=China.
+Single Hono app file. Main routes:
 
-### Frontend: `public/app.js`
+- `GET /api/ai-status` returns `{ ready: boolean }` based on `ANTHROPIC_API_KEY`.
+- `GET /api/events?days=1-30` reads `public/data/events.json`, filters relative to the latest event date in the dataset, sorts by `surfaceScore` and mentions, and returns a static enriched event slice.
+- `GET /api/probe?id=...` builds an evidence pack for one event: source evidence, related signals, model prediction, entities, impact map, hypotheses, actor game, watchlist, and uncertainty warnings.
+- `POST /api/analyze` calls Anthropic with an evidence-bound prompt. It uses `ANTHROPIC_API_KEY` from the server or a client-supplied fallback key.
 
-React 18 + Leaflet, loaded entirely from CDN. **No build step** — JSX is transpiled by Babel standalone at runtime in the browser. No npm imports, no bundler.
+The source file still contains older GDELT ZIP parsing helpers, but the review-facing API path now serves the checked-in static event dataset.
+
+GDELT country codes are FIPS-like, not ISO. The `FIPS_CONTINENT` map handles important differences, for example `UK` is United Kingdom, `JA` is Japan, `RS` is Russia, and `CH` is China.
+
+### Frontend: `app.js` and `public/app.js`
+
+React 18 + Leaflet are loaded from CDN. JSX is transpiled by Babel standalone at runtime in the browser. No npm imports, bundler, or frontend build step are used.
 
 Component tree:
+
+```text
+App
+TopBar
+MapView
+FilterPanel
+MapLegend
+EventDetail
+AiAnalysis
 ```
-App                  — state: events, filters, selected, loading, error
-├── TopBar           — doom/bloom counts
-├── MapView          — Leaflet map with CircleMarkers; top 5 doom events get SVG pulse rings
-├── FilterPanel      — category/continent/severity chips + scrollable event list
-├── MapLegend
-└── EventDetail      — slide-in panel; calls /api/analyze for AI briefing
-```
 
-Filtering is client-side (`useMemo` on `filteredEvents`). Only the `days` filter triggers a new API fetch. Continent and severity filters work on already-fetched events.
+Filtering is client-side except for the `days` filter, which triggers a new `/api/events` request. Event ordering should use `surfaceScore` where present, with `markerRadius` as a fallback.
 
-### Vercel config (`vercel.json`)
+### Eval and surfacing
 
-All `/api/*` requests are rewritten to `api/index.ts`. Static files in `public/` are served directly. The function gets 30s max duration.
+- Labels live in `data/eval/phase1_labels.jsonl`.
+- Reports are generated at `data/eval/phase1_report.json` and `data/eval/phase1_surface_report.json`.
+- The surfacing policy lives in `public/data/surfacing-policy.json`.
+- `public/data/events.json` includes `surfaceScore`, `surfaceRank`, `surfaceBand`, `surfaceReasons`, duplicate metadata, and model probability fields.
 
-### Environment variable
+The report must not claim model improvement until at least 100 labels are human-reviewed.
 
-`ANTHROPIC_API_KEY` — set in `.env` for local dev, or in Vercel project settings for production. The app works without it (AI analysis section shows a setup prompt instead).
+## Review notes
+
+- Keep root/public frontend files in sync.
+- Keep claims modest: this is a triage workflow, not verified ground truth.
+- Prefer small tests around API behavior, date-window filtering, event ordering, and eval verdicts.
+- Do not mark labels as `humanReviewed: true` unless a person has actually reviewed the source context.
