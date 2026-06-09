@@ -10,7 +10,9 @@
       "sourceCounts": {
         "llm_article_review": 120
       },
-      "humanReviewedRows": 0
+      "humanReviewedRows": 0,
+      "sourceCheckedHumanRows": 0,
+      "uncheckedHumanReviewedRows": 0
     },
     "baseline": {
       "samples": 120,

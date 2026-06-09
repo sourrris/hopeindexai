@@ -212,7 +212,7 @@ function TopBar({ globalHopeAverage, eventCount }) {
           <div className="topbar-stats">
             <span className="stat-pill hope">
               <span className="stat-dot hope" aria-hidden="true" />
-              Global Hope Index: {globalHopeAverage.toFixed(1)}/100
+              Signal Triage Score: {globalHopeAverage.toFixed(1)}/100
             </span>
             <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--text-sec)", marginLeft: 2 }}>
               ({eventCount.toLocaleString()} events clustered)
@@ -800,9 +800,9 @@ function EventDetail({ event, events, onClose, onSelectEvent, apiKey, aiReady })
             </div>
           )}
 
-          {/* Hope Index Gauge */}
+          {/* Signal triage gauge */}
           <div style={{ marginBottom: 24 }}>
-            <div className="dfield-label">Hope Index Analysis</div>
+            <div className="dfield-label">Signal Triage Analysis</div>
             <div className="hope-gauge-container">
               <div className="hope-gauge-circle">
                 <svg className="hope-gauge-svg" viewBox="0 0 48 48">
@@ -820,10 +820,10 @@ function EventDetail({ event, events, onClose, onSelectEvent, apiKey, aiReady })
               </div>
               <div className="hope-gauge-body">
                 <div className="hope-gauge-title" style={{ color: THEME_COLORS[event.theme] }}>
-                  {hopeScore >= 70 ? "Constructive Growth" : hopeScore < 40 ? "Destructive Conflict" : "Moderate Transition"}
+                  {hopeScore >= 70 ? "Constructive Signal" : hopeScore < 40 ? "High-Risk Signal" : "Mixed Signal"}
                 </div>
                 <div className="hope-gauge-desc">
-                  Calculated dynamic index representing long-term structural progress, cooperative dialogue, and future outlook impact.
+                  Triage score combining event tone, severity, coverage, and surfacing context. It is a ranking aid, not certainty.
                 </div>
               </div>
             </div>

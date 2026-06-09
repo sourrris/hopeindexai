@@ -40,6 +40,7 @@ interface Phase1Label {
   eventId: string;
   labelSource: "human" | "llm_article_review" | "bootstrap_current_rules";
   humanReviewed: boolean;
+  reviewContext?: Record<string, unknown>;
   labels: {
     important: boolean;
     categoryCorrect: boolean;
@@ -188,6 +189,12 @@ function writePrettyJson(data: unknown): string {
 
 function writeCompactJson(data: unknown): string {
   return JSON.stringify(data);
+}
+
+function isSourceCheckedHumanLabel(label: Phase1Label): boolean {
+  return label.labelSource === "human" &&
+    label.humanReviewed === true &&
+    label.reviewContext?.sourceChecked === true;
 }
 
 function dayNumber(date: string): number {
@@ -657,6 +664,8 @@ async function main() {
         return acc;
       }, {}),
       humanReviewedRows: labels.filter((label) => label.labelSource === "human" && label.humanReviewed).length,
+      sourceCheckedHumanRows: labels.filter(isSourceCheckedHumanLabel).length,
+      uncheckedHumanReviewedRows: labels.filter((label) => label.labelSource === "human" && label.humanReviewed && !isSourceCheckedHumanLabel(label)).length,
     },
     baseline: binaryMetrics(baselineRows),
     candidateModel: binaryMetrics(candidateRows),
@@ -674,7 +683,7 @@ async function main() {
   const policy = {
     version: "phase1-surfacing-policy-v1",
     generatedAt: new Date().toISOString(),
-    labelSource: metrics.labels.humanReviewedRows >= 100 ? "human" : "provisional_non_human",
+    labelSource: metrics.labels.sourceCheckedHumanRows >= 100 ? "source_checked_human" : "provisional_non_human",
     threshold: thresholdValue,
     bandCutoffs: {
       lead: 72,
@@ -701,7 +710,7 @@ async function main() {
       ],
     },
     metrics,
-    warning: "This policy is calibrated on Codex/LLM-reviewed labels unless at least 100 human labels are present. It improves product triage but is not a final scientific claim.",
+    warning: "This policy is calibrated on Codex/LLM-reviewed labels unless at least 100 source-checked human labels are present. It improves product triage but is not a final scientific claim.",
   };
 
   const report = {

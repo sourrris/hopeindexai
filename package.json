@@ -13,6 +13,7 @@
     "train": "bun pipeline/train.ts",
     "surface:phase1": "bun scripts/calibrate_phase1_surface.ts",
     "review:phase1:codex": "bun scripts/apply_phase1_codex_review.ts",
+    "review:phase1:codex-source": "bun scripts/apply_phase1_codex_source_reviews.ts",
     "review:phase1:human": "bun scripts/review_phase1_human.ts",
     "review:phase1:llm": "bun scripts/review_phase1_with_llm.ts",
     "eval:phase1": "bun scripts/eval_phase1.ts",

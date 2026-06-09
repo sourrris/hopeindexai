@@ -55,6 +55,7 @@ interface Args {
 const EVENTS_PATH = "public/data/events.json";
 const LABEL_PATH = "data/eval/phase1_labels.jsonl";
 const MIN_HUMAN_LABELS_FOR_CLAIM = 100;
+const HUMAN_REVIEW_VERSION = "phase1.human-cli.v2";
 
 function envInt(name: string, fallback: number): number {
   const raw = process.env[name];
@@ -100,7 +101,7 @@ Usage:
 Options:
   --list       Show the review queue without changing labels.
   --limit=N    Review or list at most N labels.
-  --fast       One-key accept/edit/skip mode for reviewing prior LLM/Codex labels.
+  --fast       One-key accept/edit/skip mode. Accepting still requires source/context check.
   --force      Include labels that are already human-reviewed.
 
 Environment:
@@ -169,11 +170,17 @@ function clipped(value: unknown, max = 240): string {
   return text.length > max ? `${text.slice(0, max - 3)}...` : text;
 }
 
+function isSourceCheckedHumanLabel(label: Phase1Label): boolean {
+  return label.labelSource === "human" &&
+    label.humanReviewed === true &&
+    label.reviewContext?.sourceChecked === true;
+}
+
 function selectReviewQueue(labels: Phase1Label[], eventsById: Map<string, GdeltEvent>, args: Args) {
   return labels
     .map((label, index) => ({ label, index, event: eventsById.get(label.eventId) }))
     .filter((row): row is { label: Phase1Label; index: number; event: GdeltEvent } => Boolean(row.event))
-    .filter(({ label }) => args.force || !(label.labelSource === "human" && label.humanReviewed))
+    .filter(({ label }) => args.force || !isSourceCheckedHumanLabel(label))
     .sort((a, b) => {
       const aRank = a.label.labelSource === "llm_article_review" ? 0 : a.label.labelSource === "bootstrap_current_rules" ? 1 : 2;
       const bRank = b.label.labelSource === "llm_article_review" ? 0 : b.label.labelSource === "bootstrap_current_rules" ? 1 : 2;
@@ -182,12 +189,12 @@ function selectReviewQueue(labels: Phase1Label[], eventsById: Map<string, GdeltE
     .slice(0, args.limit);
 }
 
-function printEvent(row: { label: Phase1Label; event: GdeltEvent }, position: number, total: number, humanCount: number) {
+function printEvent(row: { label: Phase1Label; event: GdeltEvent }, position: number, total: number, sourceCheckedCount: number) {
   const { label, event } = row;
   const context = label.reviewContext ?? {};
 
   console.log("\n" + "-".repeat(78));
-  console.log(`Review ${position}/${total} | human labels: ${humanCount}/${MIN_HUMAN_LABELS_FOR_CLAIM}`);
+  console.log(`Review ${position}/${total} | source-checked labels: ${sourceCheckedCount}/${MIN_HUMAN_LABELS_FOR_CLAIM}`);
   console.log(`ID: ${event.id}`);
   console.log(`Date: ${event.date}`);
   console.log(`Title: ${eventTitle(event)}`);
@@ -235,7 +242,7 @@ async function askImportant(rl: readline.Interface): Promise<boolean | "skip" | 
 }
 
 async function askFastDecision(rl: readline.Interface): Promise<"accept" | "edit" | "skip" | "quit"> {
-  const choice = await askChoice(rl, "Accept prior label? [a accept/e edit/s skip/q quit] ", {
+  const choice = await askChoice(rl, "Accept prior label after source/context check? [a accept/e edit/s skip/q quit] ", {
     a: "accept",
     accept: "accept",
     e: "edit",
@@ -247,6 +254,22 @@ async function askFastDecision(rl: readline.Interface): Promise<"accept" | "edit
   });
 
   return choice as "accept" | "edit" | "skip" | "quit";
+}
+
+async function askSourceChecked(rl: readline.Interface): Promise<true | "skip" | "quit"> {
+  const choice = await askChoice(rl, "Inspected source URL or enough source context? [y yes/n skip/q quit] ", {
+    y: "yes",
+    yes: "yes",
+    n: "skip",
+    no: "skip",
+    s: "skip",
+    skip: "skip",
+    q: "quit",
+    quit: "quit",
+  });
+
+  if (choice === "quit" || choice === "skip") return choice;
+  return true;
 }
 
 async function askBoolean(rl: readline.Interface, question: string, current: boolean): Promise<boolean | "quit"> {
@@ -311,7 +334,10 @@ function toHumanLabel(
     },
     reviewContext: {
       ...(previous.reviewContext ?? {}),
-      humanReviewVersion: "phase1.human-cli.v1",
+      humanReviewVersion: HUMAN_REVIEW_VERSION,
+      sourceChecked: true,
+      sourceCheckCriteria: "reviewer_inspected_source_url_or_enough_source_context",
+      sourceCaveatNotes: answers.notes || null,
       previousLabelSource,
       previousReviewedBy,
       previousLabels,
@@ -345,11 +371,11 @@ async function main() {
   const eventsById = await loadEvents();
   const labels = await loadLabels();
   const queue = selectReviewQueue(labels, eventsById, args);
-  const humanStart = labels.filter((label) => label.labelSource === "human" && label.humanReviewed).length;
+  const sourceCheckedStart = labels.filter(isSourceCheckedHumanLabel).length;
 
   if (args.listOnly) {
     console.log(`HopeIndexAI Phase 1 human review queue: ${queue.length} label(s) selected.`);
-    console.log(`Human-reviewed labels now: ${humanStart}/${MIN_HUMAN_LABELS_FOR_CLAIM}`);
+    console.log(`Source-checked human labels now: ${sourceCheckedStart}/${MIN_HUMAN_LABELS_FOR_CLAIM}`);
     for (const [i, row] of queue.entries()) {
       console.log(`${i + 1}. ${row.event.id} | ${row.event.date} | ${eventTitle(row.event)} | ${row.event.country}/${row.event.continent} | prior=${row.label.labelSource}`);
     }
@@ -369,16 +395,18 @@ async function main() {
   const rl = readline.createInterface({ input, output });
   let reviewed = 0;
   let skipped = 0;
-  let humanCount = humanStart;
+  let sourceCheckedCount = sourceCheckedStart;
 
   console.log("HopeIndexAI Phase 1 human review");
   console.log("Simple rule: the model is the student; these labels are the answer key.");
   console.log("Judge the real event, not whether the current model guessed well.");
+  console.log("A label counts toward model-improvement proof only after source URL or enough source context was checked.");
   console.log("Useful questions: What happened? Is the evidence strong? Would a public-interest analyst care?");
 
   try {
     for (const [position, row] of queue.entries()) {
-      printEvent(row, position + 1, queue.length, humanCount);
+      printEvent(row, position + 1, queue.length, sourceCheckedCount);
+      let sourceChecked = false;
 
       if (args.fast) {
         const decision = await askFastDecision(rl);
@@ -388,19 +416,36 @@ async function main() {
           continue;
         }
 
+        const checked = await askSourceChecked(rl);
+        if (checked === "quit") break;
+        if (checked === "skip") {
+          skipped++;
+          continue;
+        }
+        sourceChecked = true;
+
         if (decision === "accept") {
           labels[row.index] = toHumanLabel(row.label, row.event, reviewer, {
             important: row.label.labels.important,
             categoryCorrect: row.label.labels.categoryCorrect,
             severityCorrect: row.label.labels.severityCorrect,
             summaryQuality: row.label.labels.summaryQuality,
-            notes: "Fast human review: accepted the prior label after checking event metadata, source domain, and rationale. Source article was not independently opened.",
+            notes: "Fast human review: accepted the prior label after checking the source URL or enough source context.",
           });
           await saveLabels(labels);
 
           reviewed++;
-          if (!(row.label.labelSource === "human" && row.label.humanReviewed)) humanCount++;
-          console.log(`Saved human label ${reviewed}. Human-reviewed count: ${humanCount}/${MIN_HUMAN_LABELS_FOR_CLAIM}`);
+          if (!isSourceCheckedHumanLabel(row.label)) sourceCheckedCount++;
+          console.log(`Saved source-checked human label ${reviewed}. Source-checked count: ${sourceCheckedCount}/${MIN_HUMAN_LABELS_FOR_CLAIM}`);
+          continue;
+        }
+      }
+
+      if (!sourceChecked) {
+        const checked = await askSourceChecked(rl);
+        if (checked === "quit") break;
+        if (checked === "skip") {
+          skipped++;
           continue;
         }
       }
@@ -433,8 +478,8 @@ async function main() {
       await saveLabels(labels);
 
       reviewed++;
-      if (!(row.label.labelSource === "human" && row.label.humanReviewed)) humanCount++;
-      console.log(`Saved human label ${reviewed}. Human-reviewed count: ${humanCount}/${MIN_HUMAN_LABELS_FOR_CLAIM}`);
+      if (!isSourceCheckedHumanLabel(row.label)) sourceCheckedCount++;
+      console.log(`Saved source-checked human label ${reviewed}. Source-checked count: ${sourceCheckedCount}/${MIN_HUMAN_LABELS_FOR_CLAIM}`);
     }
   } finally {
     rl.close();

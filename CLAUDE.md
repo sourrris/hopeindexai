@@ -6,7 +6,7 @@ This file gives Claude Code guidance for working in this repository.
 
 HopeIndexAI is a human-in-the-loop geopolitical event triage prototype. It takes noisy public event rows, maps them, ranks which signals deserve attention, and measures whether that ranking beats a baseline. Do not describe it as a verified forecasting system.
 
-In simple ML terms: the model is the student, and human labels are the answer key. LLM/Codex-reviewed labels are useful for triage, but only human-reviewed labels can support a real improvement claim.
+In simple ML terms: the model is the student, and source-checked human labels are the answer key. LLM/Codex-reviewed labels are useful for triage, but only source-checked human-reviewed labels can support a real improvement claim.
 
 ## Commands
 
@@ -97,11 +97,11 @@ Filtering is client-side except for the `days` filter, which triggers a new `/ap
 - The surfacing policy lives in `public/data/surfacing-policy.json`.
 - `public/data/events.json` includes `surfaceScore`, `surfaceRank`, `surfaceBand`, `surfaceReasons`, duplicate metadata, and model probability fields.
 
-The report must not claim model improvement until at least 100 labels are human-reviewed.
+The report must not claim model improvement until at least 100 labels are human-reviewed and marked with `reviewContext.sourceChecked: true`.
 
 ## Review notes
 
 - Keep root/public frontend files in sync.
 - Keep claims modest: this is a triage workflow, not verified ground truth.
 - Prefer small tests around API behavior, date-window filtering, event ordering, and eval verdicts.
-- Do not mark labels as `humanReviewed: true` unless a person has actually reviewed the source context.
+- Do not mark labels as `humanReviewed: true` or `reviewContext.sourceChecked: true` unless a person has actually reviewed the source context.

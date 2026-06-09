@@ -1,10 +1,10 @@
 # HopeIndexAI
 
-Human-in-the-loop geopolitical event triage from noisy public data.
+Human-in-the-loop signal triage from noisy public data.
 
-HopeIndexAI maps a small GDELT-style event slice, ranks which events deserve attention, and keeps model output separate from human-reviewed ground truth. It is a triage prototype, not a verified forecasting system.
+HopeIndexAI maps a small GDELT-style event slice, ranks which signals deserve attention, and keeps model output separate from source-checked human ground truth. It is a triage prototype, not a verified forecasting system.
 
-In simple ML terms: the model is the student, and human labels are the answer key.
+In simple ML terms: the model is the student, and source-checked human labels are the answer key.
 
 ## Docs
 
@@ -56,10 +56,10 @@ bun run eval:phase1
 - 1,500 public event rows.
 - 120 reviewed labels.
 - 120 LLM/Codex-reviewed labels.
-- 0 human-reviewed labels.
-- 100 human-reviewed labels required before claiming model improvement.
+- 0 source-checked human labels.
+- 100 source-checked human labels required before claiming model improvement.
 
-The current metrics are useful for product triage, but they are not final proof. LLM-reviewed labels are like practice notes; human-reviewed labels are the answer key.
+The current metrics are useful for product triage, but they are not final proof. LLM-reviewed labels are like practice notes; source-checked human labels are the answer key.
 
 ## Architecture
 

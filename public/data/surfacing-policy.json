@@ -33,7 +33,9 @@
       "sourceCounts": {
         "llm_article_review": 120
       },
-      "humanReviewedRows": 0
+      "humanReviewedRows": 0,
+      "sourceCheckedHumanRows": 0,
+      "uncheckedHumanReviewedRows": 0
     },
     "baseline": {
       "samples": 120,
@@ -101,5 +103,5 @@
       "top50": 0.68
     }
   },
-  "warning": "This policy is calibrated on Codex/LLM-reviewed labels unless at least 100 human labels are present. It improves product triage but is not a final scientific claim."
+  "warning": "This policy is calibrated on Codex/LLM-reviewed labels unless at least 100 source-checked human labels are present. It improves product triage but is not a final scientific claim."
 }

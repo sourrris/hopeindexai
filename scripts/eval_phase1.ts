@@ -273,6 +273,12 @@ function validateLabel(value: unknown, index: number): Phase1Label {
   return row;
 }
 
+function isSourceCheckedHumanLabel(label: Phase1Label): boolean {
+  return label.labelSource === "human" &&
+    label.humanReviewed === true &&
+    label.reviewContext?.sourceChecked === true;
+}
+
 async function loadEvents(): Promise<{ events: GdeltEvent[]; updated?: string; count?: number }> {
   const parsed = JSON.parse(await readFile(EVENTS_PATH, "utf8"));
   if (!parsed || !Array.isArray(parsed.events)) throw new Error(`${EVENTS_PATH} must contain an events array.`);
@@ -435,20 +441,22 @@ function errorExamples(rows: ScoredRow[], key: "baseline" | "candidate", kind: "
 }
 
 function buildVerdict(
-  humanRows: ScoredRow[],
+  sourceCheckedHumanRows: ScoredRow[],
   evaluatedRows: ScoredRow[],
   primaryTruthSource: Phase1Label["labelSource"],
   baseline: ReturnType<typeof binaryMetrics>,
   candidate?: ReturnType<typeof binaryMetrics>
 ) {
-  if (humanRows.length < MIN_HUMAN_LABELS_FOR_CLAIM) {
-    const sourceDescription = primaryTruthSource === "llm_article_review"
+  if (sourceCheckedHumanRows.length < MIN_HUMAN_LABELS_FOR_CLAIM) {
+    const sourceDescription = primaryTruthSource === "human"
+      ? "source-checked human labels"
+      : primaryTruthSource === "llm_article_review"
       ? "LLM-reviewed article labels"
       : "bootstrap labels";
     return {
       status: "not_enough_human_labels",
       canClaimImprovement: false,
-      text: `No human model improvement claim yet: only ${humanRows.length} human-reviewed labels found, and Phase 1 requires at least ${MIN_HUMAN_LABELS_FOR_CLAIM}. The current metrics use ${sourceDescription} on ${evaluatedRows.length} rows.`,
+      text: `No human model improvement claim yet: only ${sourceCheckedHumanRows.length} source-checked human labels found, and Phase 1 requires at least ${MIN_HUMAN_LABELS_FOR_CLAIM}. The current metrics use ${sourceDescription} on ${evaluatedRows.length} rows.`,
     };
   }
 
@@ -470,7 +478,7 @@ function buildVerdict(
     f1Gain: round(f1Gain),
     falseAlarmChange: round(falseAlarmChange),
     text: improved
-      ? "Candidate beats the baseline on human-reviewed Phase 1 labels. It is reasonable to say the measured model improved on this eval set."
+      ? "Candidate beats the baseline on source-checked human Phase 1 labels. It is reasonable to say the measured model improved on this eval set."
       : "No model improvement claim: the candidate did not beat the baseline by the Phase 1 rule.",
   };
 }
@@ -500,13 +508,15 @@ async function main() {
   }
 
   const humanRows = scoredRows.filter((row) => row.label.labelSource === "human" && row.label.humanReviewed);
+  const sourceCheckedHumanRows = humanRows.filter((row) => isSourceCheckedHumanLabel(row.label));
+  const uncheckedHumanRows = humanRows.filter((row) => !isSourceCheckedHumanLabel(row.label));
   const llmRows = scoredRows.filter((row) => row.label.labelSource === "llm_article_review");
   const bootstrapRows = scoredRows.filter((row) => row.label.labelSource === "bootstrap_current_rules");
-  const primaryRows = humanRows.length > 0 ? humanRows : llmRows.length > 0 ? llmRows : scoredRows;
-  const primaryTruthSource = humanRows.length > 0 ? "human" : llmRows.length > 0 ? "llm_article_review" : "bootstrap_current_rules";
+  const primaryRows = sourceCheckedHumanRows.length > 0 ? sourceCheckedHumanRows : llmRows.length > 0 ? llmRows : scoredRows;
+  const primaryTruthSource = sourceCheckedHumanRows.length > 0 ? "human" : llmRows.length > 0 ? "llm_article_review" : "bootstrap_current_rules";
   const baseline = binaryMetrics(primaryRows, "baseline");
   const candidate = model ? binaryMetrics(primaryRows, "candidate") : undefined;
-  const verdict = buildVerdict(humanRows, primaryRows, primaryTruthSource, baseline, candidate);
+  const verdict = buildVerdict(sourceCheckedHumanRows, primaryRows, primaryTruthSource, baseline, candidate);
 
   const report = {
     generatedAt: new Date().toISOString(),
@@ -524,10 +534,13 @@ async function main() {
       matchedLabelRows: scoredRows.length,
       missingEventIds,
       humanReviewedRows: humanRows.length,
+      sourceCheckedHumanRows: sourceCheckedHumanRows.length,
+      uncheckedHumanReviewedRows: uncheckedHumanRows.length,
       llmReviewedRows: llmRows.length,
       bootstrapRows: bootstrapRows.length,
       primaryTruthSource,
       minHumanLabelsForImprovementClaim: MIN_HUMAN_LABELS_FOR_CLAIM,
+      minSourceCheckedHumanLabelsForImprovementClaim: MIN_HUMAN_LABELS_FOR_CLAIM,
     },
     definitions: {
       baseline: "v0 current surfacing heuristic: Goldstein strength, media mentions, severity, and marker radius.",
@@ -535,7 +548,7 @@ async function main() {
         ? `v1 stored escalation model: ${model.version ?? "unknown"}`
         : "v1 stored escalation model unavailable.",
       importantLabel: "Human answer to: should this event be surfaced as important in the app?",
-      warning: "LLM-reviewed and bootstrap labels are useful for triage, but only human labels can prove that the model improved.",
+      warning: "LLM-reviewed and bootstrap labels are useful for triage, but only source-checked human labels can prove that the model improved.",
     },
     baseline: {
       name: "v0_current_gdelt_goldstein_surface_score",
@@ -561,7 +574,7 @@ async function main() {
   await writeFile(REPORT_PATH, JSON.stringify(report, null, 2));
 
   console.log("HopeIndexAI Phase 1 eval");
-  console.log(`Labels: ${labels.length} total, ${humanRows.length} human-reviewed, ${llmRows.length} LLM-reviewed, ${bootstrapRows.length} bootstrap`);
+  console.log(`Labels: ${labels.length} total, ${humanRows.length} human-reviewed (${sourceCheckedHumanRows.length} source-checked, ${uncheckedHumanRows.length} unchecked), ${llmRows.length} LLM-reviewed, ${bootstrapRows.length} bootstrap`);
   console.log(`Primary truth source: ${primaryTruthSource}`);
   console.log(`Baseline F1: ${baseline.f1}, precision: ${baseline.precision}, recall: ${baseline.recall}`);
   if (candidate) {

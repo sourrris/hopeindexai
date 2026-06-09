@@ -8,7 +8,7 @@ Keep it simple: the phase doc should answer what we are doing now, what comes ne
 
 HopeIndexAI is a triage prototype, not a verified forecasting system.
 
-In simple ML terms: the model is the student, and human labels are the answer key. LLM/Codex labels are useful practice notes, but only human-reviewed labels can prove improvement.
+In simple ML terms: the model is the student, and source-checked human labels are the answer key. LLM/Codex labels are useful practice notes, but only source-checked human-reviewed labels can prove improvement.
 
 ## Phase Status
 
@@ -16,13 +16,13 @@ In simple ML terms: the model is the student, and human labels are the answer ke
 | --- | --- | --- | --- |
 | 0 | Baseline audit | Done | App and data shape are documented |
 | 1 | Measured MVP | Active | `bun run test:all` passes |
-| 2 | Human review loop | Next | 100 human-reviewed labels |
+| 2 | Human review loop | Next | 100 source-checked human labels |
 | 3 | Storage and ingestion | Planned | Public data becomes an export |
 | 4 | Entity resolution | Backlog | Messy actors map to stable IDs |
 | 5 | Source and claim quality | Backlog | Important claims have evidence |
 | 6 | Actor context in probes | Backlog | Probes use actor profiles carefully |
 | 7 | Feedback loop | Backlog | User feedback feeds eval data |
-| 8 | Model upgrades | Later | New model beats baseline on human labels |
+| 8 | Model upgrades | Later | New model beats baseline on source-checked human labels |
 | 9 | Production scale | Later | More data improves measured performance |
 
 ## How To Update Phases
@@ -76,9 +76,9 @@ Current evidence:
 ```text
 Events: 1,500
 Labels: 120
-Human-reviewed labels: 0
+Source-checked human labels: 0
 LLM/Codex-reviewed labels: 120
-Human labels needed for improvement claim: 100
+Source-checked human labels needed for improvement claim: 100
 ```
 
 Done means:
@@ -86,6 +86,7 @@ Done means:
 - `bun run test:all` passes.
 - The eval report says whether improvement can or cannot be claimed.
 - No non-human label is marked `humanReviewed: true`.
+- Improvement claims require at least 100 source-checked human labels with `reviewContext.sourceChecked: true`.
 - Root and `public/` frontend files stay in sync.
 
 Proof:
@@ -102,16 +103,16 @@ Goal: Build the real answer key.
 
 Why it matters:
 
-- Without human labels, we have a demo and provisional metrics.
-- With human labels, we can test whether the ranking truly beats the baseline.
+- Without source-checked human labels, we have a demo and provisional metrics.
+- With source-checked human labels, we can test whether the ranking truly beats the baseline.
 
 Step-by-step:
 
 1. List the review queue.
-2. Review 20 to 30 labels by hand.
+2. Review 20 to 30 labels by hand after opening the source URL or enough source context.
 3. Save reviewer name with `PHASE1_REVIEWER`.
 4. Rerun eval.
-5. Repeat until 100 human-reviewed labels exist.
+5. Repeat until 100 source-checked human labels exist.
 
 Commands:
 
@@ -123,9 +124,9 @@ bun run eval:phase1
 
 Done means:
 
-- At least 100 labels have `labelSource: "human"` and `humanReviewed: true`.
+- At least 100 labels have `labelSource: "human"`, `humanReviewed: true`, and `reviewContext.sourceChecked: true`.
 - The reviewer actually checked the event/source context.
-- `bun run eval:phase1` reports against human-reviewed labels.
+- `bun run eval:phase1` reports against source-checked human labels.
 
 ## Phase 3: Storage And Ingestion
 
@@ -187,7 +188,7 @@ Scale data volume only after more data improves measured performance.
 
 Do these before adding new big features:
 
-1. Human-review the first 30 labels.
+1. Source-check and human-review the first 30 labels.
 2. Rerun `bun run eval:phase1`.
 3. Add a small review UI or improve the CLI if terminal review is too slow.
 

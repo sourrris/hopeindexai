@@ -2,7 +2,7 @@
 
 ## Human-in-the-loop geopolitical event triage
 
-HopeIndexAI is an intelligence triage prototype for noisy public event data. It ingests a small GDELT-style event slice, maps events globally, ranks which signals deserve attention, and keeps model output separate from human-reviewed ground truth.
+HopeIndexAI is an intelligence triage prototype for noisy public event data. It ingests a small GDELT-style event slice, maps events globally, ranks which signals deserve attention, and keeps model output separate from source-checked human ground truth.
 
 For the step-by-step build plan, see [docs/PHASES.md](./docs/PHASES.md). For the bigger product idea, see [docs/IDEA.md](./docs/IDEA.md).
 
@@ -20,9 +20,9 @@ The target user is an analyst or operator who needs a fast first pass over publi
 2. Filter by region and theme.
 3. Inspect surfaced lead and watch events first.
 4. Open an event detail panel for source context, related signals, and AI-assisted analysis.
-5. Mark labels during review so the ranking system can be evaluated later.
+5. Mark source-checked labels during review so the ranking system can be evaluated later.
 
-In simple ML terms, the model is the student and the labels are the answer key. HopeIndexAI does not let model-reviewed labels count as final proof. The Phase 1 report refuses to claim improvement until at least 100 labels are human-reviewed.
+In simple ML terms, the model is the student and the labels are the answer key. HopeIndexAI does not let model-reviewed labels count as final proof. The Phase 1 report refuses to claim improvement until at least 100 source-checked human labels exist.
 
 ## Architecture
 
@@ -66,8 +66,8 @@ Current Phase 1 report:
 - 1,500 public events.
 - 120 reviewed labels.
 - 120 LLM/Codex-reviewed labels.
-- 0 human-reviewed labels.
-- Improvement claim blocked until 100 human-reviewed labels exist.
+- 0 source-checked human labels.
+- Improvement claim blocked until 100 source-checked human labels exist.
 
 That is an important engineering choice. It prevents the project from claiming scientific progress from weak evidence.
 
@@ -96,7 +96,7 @@ bun run test:smoke
 ## Current limitations
 
 - The event dataset is a static 1,500-row public slice.
-- The label set has no human-reviewed rows yet.
+- The label set has no source-checked human-reviewed rows yet.
 - GDELT country codes are FIPS-like, not ISO, so geography requires explicit mapping.
 - Actor resolution is still weak; examples like `ISRAEL`, `ISRAELI`, and `GOVERNMENT` are not merged into canonical actors.
 - The frontend is still prototype-style React from CDN with runtime Babel.
@@ -104,9 +104,9 @@ bun run test:smoke
 
 ## Next engineering steps
 
-1. Review the first 30 labels by hand.
+1. Review the first 30 labels by hand after opening the source URL or enough source context.
 2. Rerun `bun run eval:phase1`.
-3. Repeat until 100 human-reviewed labels exist.
+3. Repeat until 100 source-checked human labels exist.
 4. Add a small analyst review UI if terminal review is too slow.
 5. Move storage and ingestion work into Phase 3 after the review loop is working.
 
@@ -114,8 +114,8 @@ bun run test:smoke
 
 The concise story:
 
-> I built a human-in-the-loop event triage workflow for noisy geopolitical data. The hard part was not calling an AI model. The hard part was separating useful signals from duplicated, misclassified, and weak evidence, then refusing to claim model improvement until human-reviewed labels exist.
+> I built a human-in-the-loop event triage workflow for noisy geopolitical data. The hard part was not calling an AI model. The hard part was separating useful signals from duplicated, misclassified, and weak evidence, then refusing to claim model improvement until source-checked human labels exist.
 
 The tradeoff:
 
-> I kept the app simple enough to ship, then added measurement before scaling. That means the current system is honest but incomplete: it can triage events and report provisional metrics, but it cannot claim final ML improvement until humans review the answer key.
+> I kept the app simple enough to ship, then added measurement before scaling. That means the current system is honest but incomplete: it can triage events and report provisional metrics, but it cannot claim final ML improvement until humans source-check the answer key.

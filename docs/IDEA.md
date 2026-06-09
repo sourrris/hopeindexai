@@ -72,7 +72,7 @@ In simple ML terms:
 
 ```text
 model = student
-human labels = answer key
+source-checked human labels = answer key
 LLM/Codex labels = practice notes
 eval report = test score
 ```
@@ -126,8 +126,8 @@ Do not claim:
 Do claim:
 
 - The system helps triage noisy public signals.
-- The system separates model output from human-reviewed labels.
-- The system can measure whether a ranking beats a baseline once enough human labels exist.
+- The system separates model output from source-checked human labels.
+- The system can measure whether a ranking beats a baseline once enough source-checked human labels exist.
 
 ## Long-Term Direction
 
@@ -148,8 +148,7 @@ The near-term version should stay smaller:
 ```text
 good event slice
 clear surfacing order
-human labels
+source-checked human labels
 repeatable eval
 honest report
 ```
-
