@@ -16,7 +16,7 @@ In simple ML terms: the model is the student, and source-checked human labels ar
 | --- | --- | --- | --- |
 | 0 | Baseline audit | Done | App and data shape are documented |
 | 1 | Measured MVP | Active | `bun run test:all` passes |
-| 2 | Human review loop | Next | 100 source-checked human labels |
+| 2 | Training-grade records | Active | Validated records, external evidence status, plus 100 source-checked human labels |
 | 3 | Storage and ingestion | Planned | Public data becomes an export |
 | 4 | Entity resolution | Backlog | Messy actors map to stable IDs |
 | 5 | Source and claim quality | Backlog | Important claims have evidence |
@@ -76,8 +76,8 @@ Current evidence:
 ```text
 Events: 1,500
 Labels: 120
-Source-checked human labels: 0
-LLM/Codex-reviewed labels: 120
+Source-checked human labels: 4
+LLM/Codex-reviewed labels: 116
 Source-checked human labels needed for improvement claim: 100
 ```
 
@@ -95,37 +95,53 @@ Proof:
 bun run test:all
 ```
 
-## Phase 2: Human Review Loop
+## Phase 2: Training-Grade Records
 
-Status: Next.
+Status: Active.
 
-Goal: Build the real answer key.
+Goal: Build the real answer key and the record layer a future model can learn from.
 
 Why it matters:
 
+- Without training-grade records, the model learns from noisy browser rows.
 - Without source-checked human labels, we have a demo and provisional metrics.
-- With source-checked human labels, we can test whether the ranking truly beats the baseline.
+- With validated records and source-checked human labels, we can test whether the ranking truly beats the baseline.
+- With external evidence candidates, we can compare noisy rows against curated world-event datasets without calling them final product truth.
 
 Step-by-step:
 
-1. List the review queue.
-2. Review 20 to 30 labels by hand after opening the source URL or enough source context.
-3. Save reviewer name with `PHASE1_REVIEWER`.
-4. Rerun eval.
-5. Repeat until 100 source-checked human labels exist.
+1. Build training records from public events and Phase 1 labels.
+2. Validate that only source-checked human labels can become final importance truth.
+3. Import UCDP GED as historical organized-violence evidence.
+4. Match training records against external evidence by date, country, location, actor, and type.
+5. Review 20 to 30 more labels by hand after opening the source URL or enough source context.
+6. Rebuild records and rerun eval.
+7. Repeat until 100 source-checked human labels exist.
 
 Commands:
 
 ```bash
+bun run records:build
+bun run records:validate
+bun run import:ucdp
+bun run match:external
+bun run records:build
+bun run records:validate
 bun run review:phase1:human -- --list
 PHASE1_REVIEWER=your-name bun run review:phase1:human -- --limit=30
+bun run records:build
+bun run records:validate
 bun run eval:phase1
 ```
 
 Done means:
 
+- `data/training/phase2_records.jsonl` exists and validates.
+- `data/external/matches/phase2_ucdp_matches.jsonl` records UCDP match status where the local UCDP import exists.
 - At least 100 labels have `labelSource: "human"`, `humanReviewed: true`, and `reviewContext.sourceChecked: true`.
 - The reviewer actually checked the event/source context.
+- Weak future-window targets are not treated as final evaluation truth.
+- External evidence is not treated as final importance truth.
 - `bun run eval:phase1` reports against source-checked human labels.
 
 ## Phase 3: Storage And Ingestion
@@ -144,8 +160,9 @@ Step-by-step:
 
 1. Create a processed-data folder structure.
 2. Keep public browser data as an export only.
-3. Add a repeatable ingestion script for a date range.
-4. Add deterministic dedupe and public-slice export.
+3. Add a repeatable ingestion script for GDELT-style rows by date range.
+4. Add repeatable external evidence imports for datasets such as UCDP, ACLED, and ICBe.
+5. Add deterministic dedupe and public-slice export.
 
 Target structure:
 
@@ -188,9 +205,10 @@ Scale data volume only after more data improves measured performance.
 
 Do these before adding new big features:
 
-1. Source-check and human-review the first 30 labels.
-2. Rerun `bun run eval:phase1`.
-3. Add a small review UI or improve the CLI if terminal review is too slow.
+1. Keep `data/training/phase2_records.jsonl` generated and validated.
+2. Keep UCDP profile and match status generated when the local UCDP files exist.
+3. Source-check and human-review the next 30 labels.
+4. Rerun `bun run records:build`, `bun run records:validate`, and `bun run eval:phase1`.
 
 ## Decision Rule
 

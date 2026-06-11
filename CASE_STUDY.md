@@ -43,6 +43,11 @@ public/data/escalation-model.json
 -> model probability
 -> surfacing calibration
 -> surfaceScore, surfaceBand, surfaceReasons
+
+data/training/phase2_records.jsonl
+-> source, actor, label, and weak outcome guardrails
+-> UCDP external evidence status
+-> future model training inputs
 ```
 
 Two runtime paths are supported:
@@ -65,8 +70,8 @@ Current Phase 1 report:
 
 - 1,500 public events.
 - 120 reviewed labels.
-- 120 LLM/Codex-reviewed labels.
-- 0 source-checked human labels.
+- 116 LLM/Codex-reviewed labels.
+- 4 source-checked human labels.
 - Improvement claim blocked until 100 source-checked human labels exist.
 
 That is an important engineering choice. It prevents the project from claiming scientific progress from weak evidence.
@@ -80,6 +85,24 @@ bun run review:phase1:codex
 bun run eval:phase1
 bun run surface:phase1
 ```
+
+The project also has a training-record layer:
+
+```bash
+bun run records:build
+bun run records:validate
+```
+
+This converts labelled public rows into catalogue records with source, actor, label, weak outcome, and ML-use guardrails.
+
+The next layer is external evidence:
+
+```bash
+bun run import:ucdp
+bun run match:external
+```
+
+This imports UCDP GED as curated historical conflict evidence and records whether each training row has a plausible external match. The current result is useful but modest: UCDP GED 26.1 ends on 2025-12-31, while most current demo rows are May 2026, so the matcher correctly reports no UCDP candidates for the current Phase 2 records.
 
 The ontology validator also checks that every public event can map into the core world model:
 
@@ -96,7 +119,8 @@ bun run test:smoke
 ## Current limitations
 
 - The event dataset is a static 1,500-row public slice.
-- The label set has no source-checked human-reviewed rows yet.
+- The label set has only 4 source-checked human-reviewed rows so far.
+- The first external dataset, UCDP GED 26.1, is historical and ends before the current demo slice.
 - GDELT country codes are FIPS-like, not ISO, so geography requires explicit mapping.
 - Actor resolution is still weak; examples like `ISRAEL`, `ISRAELI`, and `GOVERNMENT` are not merged into canonical actors.
 - The frontend is still prototype-style React from CDN with runtime Babel.
@@ -104,11 +128,11 @@ bun run test:smoke
 
 ## Next engineering steps
 
-1. Review the first 30 labels by hand after opening the source URL or enough source context.
-2. Rerun `bun run eval:phase1`.
-3. Repeat until 100 source-checked human labels exist.
-4. Add a small analyst review UI if terminal review is too slow.
-5. Move storage and ingestion work into Phase 3 after the review loop is working.
+1. Keep `data/training/phase2_records.jsonl` generated and validated.
+2. Review the next 30 labels by hand after opening the source URL or enough source context.
+3. Rerun `bun run records:build`, `bun run records:validate`, and `bun run eval:phase1`.
+4. Repeat until 100 source-checked human labels exist.
+5. Move storage and ingestion work into Phase 3 after the record loop is working.
 
 ## Interview narrative
 

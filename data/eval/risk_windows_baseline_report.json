@@ -1,0 +1,120 @@
+{
+  "schemaVersion": "risk-window-baseline-report.v1",
+  "generatedAt": "2026-06-11T12:04:39.533Z",
+  "datasetPath": "data/training/risk_windows_country_month.jsonl",
+  "task": "Rank country-month windows by organized-violence risk using only prior UCDP history.",
+  "baseline": {
+    "name": "history_recency_momentum_score",
+    "formula": "log UCDP past-1m events + log UCDP past-3m deaths + log UCDP past-12m events + UCDP momentum + light ACLED trend + light neighbor spillover + light actor memory - quiet penalty"
+  },
+  "splits": [
+    {
+      "split": "train",
+      "rows": 15552,
+      "positives": 5318,
+      "prevalence": 0.3419,
+      "deathsBest": 1588818,
+      "averagePrecision": 0.9448,
+      "top5Pct": {
+        "fraction": 0.05,
+        "selected": 778,
+        "precision": 0.9961,
+        "recall": 0.1457
+      },
+      "top10Pct": {
+        "fraction": 0.1,
+        "selected": 1555,
+        "precision": 0.9968,
+        "recall": 0.2915
+      },
+      "top20Pct": {
+        "fraction": 0.2,
+        "selected": 3110,
+        "precision": 0.9855,
+        "recall": 0.5763
+      }
+    },
+    {
+      "split": "validation",
+      "rows": 2592,
+      "positives": 1043,
+      "prevalence": 0.4024,
+      "deathsBest": 358641,
+      "averagePrecision": 0.9598,
+      "top5Pct": {
+        "fraction": 0.05,
+        "selected": 130,
+        "precision": 1,
+        "recall": 0.1246
+      },
+      "top10Pct": {
+        "fraction": 0.1,
+        "selected": 259,
+        "precision": 1,
+        "recall": 0.2483
+      },
+      "top20Pct": {
+        "fraction": 0.2,
+        "selected": 518,
+        "precision": 0.9961,
+        "recall": 0.4947
+      }
+    },
+    {
+      "split": "test",
+      "rows": 1296,
+      "positives": 504,
+      "prevalence": 0.3889,
+      "deathsBest": 245464,
+      "averagePrecision": 0.9774,
+      "top5Pct": {
+        "fraction": 0.05,
+        "selected": 65,
+        "precision": 1,
+        "recall": 0.129
+      },
+      "top10Pct": {
+        "fraction": 0.1,
+        "selected": 130,
+        "precision": 1,
+        "recall": 0.2579
+      },
+      "top20Pct": {
+        "fraction": 0.2,
+        "selected": 259,
+        "precision": 1,
+        "recall": 0.5139
+      }
+    },
+    {
+      "split": "holdout_preliminary",
+      "rows": 540,
+      "positives": 203,
+      "prevalence": 0.3759,
+      "deathsBest": 79746,
+      "averagePrecision": 0.7297,
+      "top5Pct": {
+        "fraction": 0.05,
+        "selected": 27,
+        "precision": 0.7778,
+        "recall": 0.1034
+      },
+      "top10Pct": {
+        "fraction": 0.1,
+        "selected": 54,
+        "precision": 0.7963,
+        "recall": 0.2118
+      },
+      "top20Pct": {
+        "fraction": 0.2,
+        "selected": 108,
+        "precision": 0.7778,
+        "recall": 0.4138
+      }
+    }
+  ],
+  "notes": [
+    "Average precision and top-percentile precision/recall are better than accuracy for this sparse risk-ranking task.",
+    "This is the dumb baseline a learned model must beat before we trust it."
+  ]
+}

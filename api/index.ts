@@ -112,6 +112,41 @@ interface ProbePack {
   uncertaintyWarnings: string[];
 }
 
+interface RiskWindowRecord {
+  recordId: string;
+  window: {
+    countryKey: string;
+    country: string;
+    region: string;
+    month: string;
+    predictionMadeAt: string;
+    split: string;
+  };
+  features: Record<string, number | null | undefined>;
+  labels: {
+    currentMonthHasOrganizedViolence: boolean;
+    currentMonthEvents: number;
+    currentMonthDeathsBest: number;
+    sourceChecked?: boolean;
+    labelSource?: string;
+  };
+}
+
+interface DeterministicRiskModel {
+  kind: "deterministic_score";
+  weights: {
+    recency: number;
+    recentDeaths: number;
+    history: number;
+    momentum: number;
+    acledTrend: number;
+    spillover: number;
+    actorMemory: number;
+    quietMax: number;
+    quietDivisor: number;
+  };
+}
+
 // ── GDELT column indices (0-indexed, 61 columns total) ────────────────────────
 const COL = {
   GLOBALEVENTID: 0,
@@ -327,6 +362,132 @@ async function loadEventDataset(): Promise<{ events: GdeltEvent[]; updated?: str
 
 function surfaceSortScore(event: any): number {
   return Number.isFinite(event?.surfaceScore) ? Number(event.surfaceScore) : Number(event?.markerRadius ?? 0);
+}
+
+async function resolveDataPath(relativePath: string): Promise<string> {
+  const resolved = await tryResolveDataPath(relativePath);
+  if (resolved) return resolved;
+
+  return join(process.cwd(), relativePath);
+}
+
+async function tryResolveDataPath(relativePath: string): Promise<string | null> {
+  const candidates = [
+    join(process.cwd(), relativePath),
+    join(MODULE_DIR, "..", relativePath),
+  ];
+
+  for (const path of candidates) {
+    try {
+      await fs.access(path);
+      return path;
+    } catch {
+      // Try the next known runtime layout.
+    }
+  }
+
+  return null;
+}
+
+async function resolveFirstDataPath(relativePaths: string[]): Promise<{ relativePath: string; path: string }> {
+  for (const relativePath of relativePaths) {
+    const path = await tryResolveDataPath(relativePath);
+    if (path) return { relativePath, path };
+  }
+
+  throw new Error(`Missing data file. Tried: ${relativePaths.join(", ")}`);
+}
+
+async function readJsonFile<T>(relativePath: string): Promise<T> {
+  const path = await resolveDataPath(relativePath);
+  const text = await fs.readFile(path, "utf8");
+  return JSON.parse(text) as T;
+}
+
+function featureNumber(record: RiskWindowRecord, key: string): number {
+  const value = record.features?.[key];
+  return Number.isFinite(value) ? Number(value) : 0;
+}
+
+function deterministicRiskScore(record: RiskWindowRecord, model: DeterministicRiskModel): number {
+  const weights = model.weights;
+  const monthsSinceLastEvent = record.features?.monthsSinceLastEvent;
+  const quietPenalty = Number.isFinite(monthsSinceLastEvent)
+    ? -Math.min(weights.quietMax, Number(monthsSinceLastEvent) / weights.quietDivisor)
+    : -weights.quietMax;
+
+  return (
+    Math.log1p(featureNumber(record, "past1mEvents")) * weights.recency +
+    Math.log1p(featureNumber(record, "past3mDeathsBest")) * weights.recentDeaths +
+    Math.log1p(featureNumber(record, "past12mEvents")) * weights.history +
+    Math.max(0, featureNumber(record, "eventMomentum3v12")) * weights.momentum +
+    Math.log1p(featureNumber(record, "acledPast3mEvents")) * weights.acledTrend +
+    Math.log1p(featureNumber(record, "neighborPast3mDeathsBest")) * weights.spillover +
+    Math.log1p(featureNumber(record, "past3mActorTokenCount")) * weights.actorMemory +
+    quietPenalty
+  );
+}
+
+function riskWindowDrivers(record: RiskWindowRecord): Array<{ label: string; value: string }> {
+  const f = record.features ?? {};
+  return [
+    { label: "Past 1m UCDP events", value: String(f.past1mEvents ?? 0) },
+    { label: "Past 3m deaths", value: String(f.past3mDeathsBest ?? 0) },
+    { label: "Past 12m events", value: String(f.past12mEvents ?? 0) },
+    { label: "ACLED 3m events", value: String(f.acledPast3mEvents ?? 0) },
+    { label: "Neighbor 3m deaths", value: String(f.neighborPast3mDeathsBest ?? 0) },
+    { label: "Actor memory tokens", value: String(f.past3mActorTokenCount ?? 0) },
+    { label: "Months since last event", value: f.monthsSinceLastEvent == null ? "none" : String(f.monthsSinceLastEvent) },
+  ];
+}
+
+function publicRiskWindow(record: RiskWindowRecord, score: number, rank: number) {
+  return {
+    recordId: record.recordId,
+    rank,
+    riskScore: Number(score.toFixed(3)),
+    country: record.window.country,
+    countryKey: record.window.countryKey,
+    region: record.window.region,
+    month: record.window.month,
+    predictionMadeAt: record.window.predictionMadeAt,
+    split: record.window.split,
+    actual: {
+      organizedViolence: Boolean(record.labels?.currentMonthHasOrganizedViolence),
+      events: Number(record.labels?.currentMonthEvents ?? 0),
+      deathsBest: Number(record.labels?.currentMonthDeathsBest ?? 0),
+      sourceChecked: Boolean(record.labels?.sourceChecked),
+      labelSource: record.labels?.labelSource ?? "unknown",
+    },
+    drivers: riskWindowDrivers(record),
+    features: {
+      past1mEvents: featureNumber(record, "past1mEvents"),
+      past3mDeathsBest: featureNumber(record, "past3mDeathsBest"),
+      past12mEvents: featureNumber(record, "past12mEvents"),
+      eventMomentum3v12: featureNumber(record, "eventMomentum3v12"),
+      acledPast3mEvents: featureNumber(record, "acledPast3mEvents"),
+      neighborPast3mDeathsBest: featureNumber(record, "neighborPast3mDeathsBest"),
+      past3mActorTokenCount: featureNumber(record, "past3mActorTokenCount"),
+      monthsSinceLastEvent: record.features?.monthsSinceLastEvent ?? null,
+    },
+  };
+}
+
+async function loadRiskChampion() {
+  const champion = await readJsonFile<any>("data/models/risk_window_champion.json");
+  const modelPath = typeof champion.modelPath === "string"
+    ? champion.modelPath
+    : "data/models/risk_window_challenger_best.json";
+  const reportPath = typeof champion.reportPath === "string"
+    ? champion.reportPath
+    : "data/eval/risk_window_challenger_best_report.json";
+
+  const [model, latestResearch] = await Promise.all([
+    readJsonFile<DeterministicRiskModel>(modelPath),
+    readJsonFile<any>(reportPath).catch(() => null),
+  ]);
+
+  return { champion, model, latestResearch };
 }
 
 function parseEventDateMs(date: unknown): number | null {
@@ -1378,6 +1539,91 @@ app.get("/api/events", async (c) => {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("API -> Failed to read events.json:", msg);
     return c.json({ error: "Failed to load pre-enriched event dataset", events: [], count: 0 }, 500);
+  }
+});
+
+app.get("/api/risk-champion", async (c) => {
+  try {
+    const { champion, model, latestResearch } = await loadRiskChampion();
+    return c.json({
+      champion,
+      model: {
+        kind: model.kind,
+        weights: model.weights,
+      },
+      latestResearch: latestResearch
+        ? {
+            generatedAt: latestResearch.generatedAt,
+            variantsTried: latestResearch.variantsTried,
+            bestChallenger: latestResearch.bestChallenger
+              ? {
+                  id: latestResearch.bestChallenger.variant?.id,
+                  hypothesis: latestResearch.bestChallenger.variant?.hypothesis,
+                  promoted: Boolean(latestResearch.bestChallenger.promoted),
+                  validationAveragePrecision: latestResearch.bestChallenger.splits?.validation?.averagePrecision,
+                  testAveragePrecision: latestResearch.bestChallenger.splits?.test?.averagePrecision,
+                  holdoutPreliminaryAveragePrecision: latestResearch.bestChallenger.splits?.holdout_preliminary?.averagePrecision,
+                }
+              : null,
+          }
+        : null,
+      caveat: "This is an analyst triage ranker. 2026 holdout labels are preliminary and can lag real events.",
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("API -> Failed to load risk champion:", msg);
+    return c.json({ error: `Failed to load risk champion: ${msg}` }, 500);
+  }
+});
+
+app.get("/api/risk-windows", async (c) => {
+  const split = c.req.query("split")?.trim() || "holdout_preliminary";
+  const requestedLimit = Number.parseInt(c.req.query("limit") ?? "25", 10);
+  const limit = Number.isFinite(requestedLimit) ? Math.max(1, Math.min(200, requestedLimit)) : 25;
+
+  try {
+    const { champion, model } = await loadRiskChampion();
+    const datasetPath = typeof champion.datasetPath === "string"
+      ? champion.datasetPath
+      : "data/training/risk_windows_country_month.jsonl";
+    const dataset = await resolveFirstDataPath([
+      datasetPath,
+      "data/training/risk_windows_country_month_sample.jsonl",
+    ]);
+    const text = await fs.readFile(dataset.path, "utf8");
+    const ranked: Array<{ record: RiskWindowRecord; score: number }> = [];
+
+    for (const line of text.split(/\r?\n/)) {
+      if (!line.trim()) continue;
+      const record = JSON.parse(line) as RiskWindowRecord;
+      if (record.window?.split !== split) continue;
+      ranked.push({ record, score: deterministicRiskScore(record, model) });
+    }
+
+    ranked.sort((a, b) =>
+      b.score - a.score ||
+      Number(b.record.labels?.currentMonthEvents ?? 0) - Number(a.record.labels?.currentMonthEvents ?? 0)
+    );
+
+    const windows = ranked.slice(0, limit).map((item, index) => publicRiskWindow(item.record, item.score, index + 1));
+    return c.json({
+      split,
+      count: ranked.length,
+      returned: windows.length,
+      championId: champion.championId,
+      datasetPath: dataset.relativePath,
+      usingSampleDataset: dataset.relativePath !== datasetPath,
+      windows,
+      caveat: dataset.relativePath !== datasetPath
+        ? "Showing committed sample rows because the full generated risk-window dataset is local-only. Run bun run risk:windows to rebuild the full file."
+        : split === "holdout_preliminary"
+        ? "Preliminary holdout labels are useful for smoke checks, but late-arriving conflict records can turn apparent misses into hits."
+        : "These rows are historical evaluation windows with source-checked UCDP-style labels.",
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("API -> Failed to load risk windows:", msg);
+    return c.json({ error: `Failed to load risk windows: ${msg}`, windows: [], count: 0 }, 500);
   }
 });
 

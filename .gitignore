@@ -8,3 +8,18 @@ dist/
 build/
 .idea/
 .vscode/
+
+# Browser automation snapshots
+.playwright-mcp/
+hopeindexai-current.png
+
+# Local external datasets and bulky normalized evidence
+data/external/**/*.csv
+data/external/**/*.xlsx
+data/external/**/*.zip
+data/external/**/*_compact.jsonl
+
+# Bulky/generated training outputs
+data/training/risk_windows_country_month.jsonl
+data/training/historical_conflict_records.jsonl
+data/experiments/

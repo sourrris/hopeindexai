@@ -1,4 +1,4 @@
-import { createServer } from "node:http";
+import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import handler from "../api/index.ts";
 
@@ -26,6 +26,61 @@ async function fetchJson(baseUrl: string, path: string): Promise<any> {
   return response.json();
 }
 
+function createSmokeServer(): Server {
+  return createServer(async (req, res) => {
+    req.headers["x-forwarded-proto"] = "http";
+
+    try {
+      await handler(req, res);
+    } catch (err) {
+      if (!res.headersSent) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: String(err) }));
+      }
+    }
+  });
+}
+
+async function listen(server: Server, port: number): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const onError = (err: Error) => {
+      server.off("listening", onListening);
+      reject(err);
+    };
+    const onListening = () => {
+      server.off("error", onError);
+      resolve();
+    };
+
+    server.once("error", onError);
+    server.once("listening", onListening);
+    server.listen(port, "127.0.0.1");
+  });
+}
+
+async function startSmokeServer(): Promise<{ server: Server; baseUrl: string }> {
+  const envPort = Number.parseInt(process.env.SMOKE_API_PORT ?? "", 10);
+  const ports = Number.isFinite(envPort) && envPort > 0
+    ? [envPort]
+    : Array.from({ length: 50 }, (_, index) => 43100 + index);
+  let lastError = "";
+
+  for (const port of ports) {
+    const server = createSmokeServer();
+    try {
+      await listen(server, port);
+      const address = server.address() as AddressInfo;
+      return { server, baseUrl: `http://127.0.0.1:${address.port}` };
+    } catch (err) {
+      const error = err as Error & { code?: string };
+      lastError = error.message;
+      if (error.code !== "EADDRINUSE" && error.code !== "EACCES") throw err;
+    }
+  }
+
+  throw new Error(`Failed to start server. Tried ports ${ports[0]}-${ports[ports.length - 1]}. ${lastError}`);
+}
+
 function assertSortedBySurface(events: EventRow[], label: string): void {
   for (let i = 1; i < events.length; i++) {
     const prev = events[i - 1];
@@ -42,22 +97,7 @@ function assertSortedBySurface(events: EventRow[], label: string): void {
 }
 
 async function main() {
-  const server = createServer(async (req, res) => {
-    req.headers["x-forwarded-proto"] = "http";
-
-    try {
-      await handler(req, res);
-    } catch (err) {
-      if (!res.headersSent) {
-        res.writeHead(500, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: String(err) }));
-      }
-    }
-  });
-
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const address = server.address() as AddressInfo;
-  const baseUrl = `http://127.0.0.1:${address.port}`;
+  const { server, baseUrl } = await startSmokeServer();
 
   try {
     const status = await fetchJson(baseUrl, "/api/ai-status");
@@ -65,6 +105,8 @@ async function main() {
 
     const oneDay = await fetchJson(baseUrl, "/api/events?days=1");
     const sevenDays = await fetchJson(baseUrl, "/api/events?days=7");
+    const riskChampion = await fetchJson(baseUrl, "/api/risk-champion");
+    const riskWindows = await fetchJson(baseUrl, "/api/risk-windows?split=holdout_preliminary&limit=5");
 
     assert(Array.isArray(oneDay.events), "days=1 must return an events array");
     assert(Array.isArray(sevenDays.events), "days=7 must return an events array");
@@ -75,11 +117,16 @@ async function main() {
 
     assertSortedBySurface(oneDay.events, "days=1 events");
     assertSortedBySurface(sevenDays.events, "days=7 events");
+    assert(typeof riskChampion.champion?.championId === "string", "/api/risk-champion must return a champion id");
+    assert(Array.isArray(riskWindows.windows), "/api/risk-windows must return a windows array");
+    assert(riskWindows.windows.length > 0, "/api/risk-windows should return at least one ranked window");
 
     console.log("HopeIndexAI API smoke test passed");
     console.log(`aiStatus.ready=${status.ready}`);
     console.log(`events.days1=${oneDay.events.length}`);
     console.log(`events.days7=${sevenDays.events.length}`);
+    console.log(`riskChampion=${riskChampion.champion.championId}`);
+    console.log(`riskWindows=${riskWindows.windows.length}`);
   } finally {
     await new Promise<void>((resolve, reject) => {
       server.close((err) => err ? reject(err) : resolve());

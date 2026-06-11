@@ -1,0 +1,100 @@
+{
+  "schemaVersion": "risk-window-profile.v1",
+  "generatedAt": "2026-06-11T12:04:39.532Z",
+  "recordVersion": "country-month-risk.2010.v1",
+  "startMonth": "2010-01",
+  "endMonth": "2026-05",
+  "sourcePaths": [
+    "data/external/ucdp/ged_events_compact.jsonl",
+    "data/external/ucdp_candidate/candidate_events_compact.jsonl",
+    "data/external/aceld/aceld_aggregates_compact.jsonl"
+  ],
+  "outputPath": "data/training/risk_windows_country_month.jsonl",
+  "rows": 21276,
+  "countries": 108,
+  "acledAggregateCountriesMatched": 98,
+  "featureFamilies": [
+    "ucdp_country_history",
+    "ucdp_neighbor_region_spillover",
+    "ucdp_actor_memory",
+    "acled_aggregate_trends"
+  ],
+  "positiveRows": 7394,
+  "prevalence": 0.3475,
+  "trainableOutcomeRows": 15552,
+  "evaluableOutcomeRows": 3888,
+  "counts": {
+    "split": {
+      "train": 16848,
+      "validation": 2592,
+      "test": 1296,
+      "holdout_preliminary": 540
+    },
+    "region": {
+      "Africa": 8077,
+      "Americas": 3940,
+      "Asia": 3349,
+      "Europe": 2955,
+      "Middle East": 2955
+    },
+    "countryTop25": {
+      "Afghanistan": 197,
+      "Algeria": 197,
+      "Angola": 197,
+      "Argentina": 197,
+      "Armenia": 197,
+      "Australia": 197,
+      "Austria": 197,
+      "Azerbaijan": 197,
+      "Bahrain": 197,
+      "Bangladesh": 197,
+      "Belgium": 197,
+      "Belize": 197,
+      "Benin": 197,
+      "Bolivia": 197,
+      "Brazil": 197,
+      "Burkina Faso": 197,
+      "Burundi": 197,
+      "Cambodia (Kampuchea)": 197,
+      "Cameroon": 197,
+      "Canada": 197,
+      "Central African Republic": 197,
+      "Chad": 197,
+      "China": 197,
+      "Colombia": 197,
+      "Congo": 197
+    },
+    "monthRecent": {
+      "2026-05": 108,
+      "2026-04": 108,
+      "2026-03": 108,
+      "2026-02": 108,
+      "2026-01": 108,
+      "2025-12": 108,
+      "2025-11": 108,
+      "2025-10": 108,
+      "2025-09": 108,
+      "2025-08": 108,
+      "2025-07": 108,
+      "2025-06": 108,
+      "2025-05": 108,
+      "2025-04": 108,
+      "2025-03": 108,
+      "2025-02": 108,
+      "2025-01": 108,
+      "2024-12": 108,
+      "2024-11": 108,
+      "2024-10": 108,
+      "2024-09": 108,
+      "2024-08": 108,
+      "2024-07": 108,
+      "2024-06": 108
+    }
+  },
+  "notes": [
+    "Each row is a country-month prediction problem: features are prior-month history, labels are current-month UCDP organized-violence outcomes.",
+    "This is an outcome-risk dataset, not HopeIndexAI importance-label truth.",
+    "Rows from 2026 use UCDP Candidate and are marked holdout_preliminary because Candidate releases can revise.",
+    "ACLED aggregate features are trend/context features only; UCDP remains the outcome label source."
+  ]
+}

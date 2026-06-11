@@ -1,0 +1,117 @@
+{
+  "schemaVersion": "external-profile.acled-aggregate.v1",
+  "generatedAt": "2026-06-11T11:18:24.866Z",
+  "sourceDir": "data/external/aceld",
+  "outputPath": "data/external/aceld/aceld_aggregates_compact.jsonl",
+  "rows": 959185,
+  "files": [
+    {
+      "path": "data/external/aceld/Africa_aggregated_data_up_to_week_of-2026-05-30.xlsx",
+      "rows": 274632
+    },
+    {
+      "path": "data/external/aceld/Asia-Pacific_aggregated_data_up_to_week_of-2026-05-30.xlsx",
+      "rows": 212917
+    },
+    {
+      "path": "data/external/aceld/Europe-Central-Asia_aggregated_data_up_to_week_of-2026-05-30.xlsx",
+      "rows": 122223
+    },
+    {
+      "path": "data/external/aceld/Latin-America-the-Caribbean_aggregated_data_up_to_week_of-2026-05-30.xlsx",
+      "rows": 177151
+    },
+    {
+      "path": "data/external/aceld/Middle-East_aggregated_data_up_to_week_of-2026-05-30.xlsx",
+      "rows": 148850
+    },
+    {
+      "path": "data/external/aceld/US-and-Canada_aggregated_data_up_to_week_of-2026-05-30.xlsx",
+      "rows": 23412
+    }
+  ],
+  "dateRange": {
+    "min": "1996-12-28",
+    "max": "2026-05-30"
+  },
+  "totals": {
+    "events": 3067939,
+    "fatalities": 2580114,
+    "countries": 244
+  },
+  "counts": {
+    "countryTop50": {
+      "Ukraine": 324745,
+      "India": 211822,
+      "Syria": 151643,
+      "Mexico": 120773,
+      "Pakistan": 115983,
+      "Yemen": 113790,
+      "Brazil": 111578,
+      "Myanmar": 107611,
+      "United States": 103316,
+      "Palestine": 95471,
+      "Afghanistan": 69613,
+      "Iraq": 68569,
+      "Russia": 59389,
+      "Somalia": 56786,
+      "Turkey": 50390,
+      "Nigeria": 50208,
+      "South Korea": 47596,
+      "France": 46685,
+      "Democratic Republic of Congo": 45799,
+      "Lebanon": 42895,
+      "Iran": 41543,
+      "Sudan": 40225,
+      "Colombia": 37844,
+      "Bangladesh": 35172,
+      "Italy": 29445,
+      "Venezuela": 29357,
+      "Germany": 27983,
+      "Indonesia": 26658,
+      "Nepal": 26027,
+      "Spain": 25801,
+      "South Africa": 24849,
+      "Cameroon": 24444,
+      "Kenya": 21299,
+      "Israel": 20936,
+      "Philippines": 19106,
+      "Azerbaijan": 19036,
+      "Argentina": 18693,
+      "Ethiopia": 18586,
+      "China": 18167,
+      "Ecuador": 17434,
+      "South Sudan": 17395,
+      "Chile": 16156,
+      "Morocco": 16097,
+      "Mali": 15324,
+      "Bahrain": 14466,
+      "Burkina Faso": 14440,
+      "Japan": 14429,
+      "Thailand": 13463,
+      "Peru": 13192,
+      "Libya": 13177
+    },
+    "disorderType": {
+      "Political violence": 1413331,
+      "Demonstrations": 1247516,
+      "unknown": 401648,
+      "Political violence; Demonstrations": 5436,
+      "Strategic developments": 8
+    },
+    "eventType": {
+      "Protests": 1226366,
+      "Explosions/Remote violence": 570353,
+      "Battles": 497731,
+      "Violence against civilians": 344480,
+      "Strategic developments": 236129,
+      "Riots": 192871,
+      "unknown": 9
+    }
+  },
+  "notes": [
+    "These are ACLED aggregate rows, not row-level event records.",
+    "Use them for country/admin/week trend features and weak external context.",
+    "Do not treat aggregate rows as source-checked ground-truth labels for individual HopeIndexAI events."
+  ]
+}

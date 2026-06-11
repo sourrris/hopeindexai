@@ -103,6 +103,24 @@
       flex: 1; justify-content: center; flex-shrink: 0;
       overflow: hidden;
     }
+    .view-tabs {
+      display: inline-flex; align-items: center; gap: 2px;
+      padding: 2px; border: 1px solid var(--border);
+      border-radius: 8px; background: var(--surface);
+      flex-shrink: 0;
+    }
+    .view-tab {
+      border: 0; border-radius: 6px; background: transparent;
+      color: var(--text-sec); cursor: pointer;
+      padding: 5px 9px; font-size: 10px; font-weight: 700;
+      font-family: var(--font-mono); letter-spacing: 0.02em;
+      white-space: nowrap;
+    }
+    .view-tab:hover { color: var(--text); }
+    .view-tab.on {
+      background: var(--text); color: var(--bg);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+    }
     .live-badge {
       display: flex; align-items: center; gap: 5px;
       padding: 4px 10px; border-radius: 100px;
@@ -739,6 +757,477 @@
       text-decoration: none; transition: opacity 0.15s;
     }
     .ai-setup-link:hover { opacity: 0.78; }
+
+    /* ── Risk windows ───────────────────────────────────────────────────── */
+    .risk-view {
+      height: 100%;
+      overflow: auto;
+      padding: 22px;
+      background: linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%);
+      color: var(--text);
+    }
+    .risk-head {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(260px, 360px);
+      gap: 18px;
+      align-items: stretch;
+      margin-bottom: 14px;
+    }
+    .risk-kicker {
+      font-size: 10px; font-weight: 800; letter-spacing: 0.12em;
+      text-transform: uppercase; font-family: var(--font-mono);
+      color: var(--text-muted); margin-bottom: 6px;
+    }
+    .risk-head h1 {
+      margin: 0; font-size: 22px; line-height: 1.15;
+      letter-spacing: -0.02em; color: var(--text);
+    }
+    .risk-head p {
+      margin: 7px 0 0; max-width: 680px;
+      color: var(--text-sec); font-size: 13px; line-height: 1.5;
+    }
+    .risk-model-card, .risk-table-wrap, .risk-detail-card {
+      border: 1px solid var(--border-hi);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: var(--shadow-sm);
+    }
+    .risk-model-card { padding: 13px; }
+    .risk-card-label, .risk-section-head {
+      font-size: 10px; font-weight: 800; letter-spacing: 0.08em;
+      text-transform: uppercase; color: var(--text-muted);
+      font-family: var(--font-mono);
+    }
+    .risk-champion-id {
+      margin-top: 6px; font-family: var(--font-mono);
+      font-size: 14px; font-weight: 800; color: var(--text);
+      word-break: break-word;
+    }
+    .risk-card-note {
+      margin-top: 8px; font-size: 11px; line-height: 1.45;
+      color: var(--text-sec);
+    }
+    .risk-metrics {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(130px, 1fr));
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .risk-metric {
+      min-width: 0; padding: 10px 11px;
+      border: 1px solid var(--border);
+      border-radius: 8px; background: #FFFFFF;
+    }
+    .risk-metric span {
+      display: block; font-size: 9px; font-weight: 800;
+      letter-spacing: 0.08em; text-transform: uppercase;
+      color: var(--text-muted); font-family: var(--font-mono);
+    }
+    .risk-metric strong {
+      display: block; margin-top: 4px; font-size: 15px;
+      color: var(--text); font-family: var(--font-mono);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .risk-metric.wide strong { font-size: 11px; line-height: 1.35; white-space: normal; }
+    .risk-research-strip, .risk-error {
+      display: flex; align-items: center; flex-wrap: wrap; gap: 10px;
+      margin-bottom: 12px; padding: 9px 11px;
+      border: 1px solid var(--border); border-radius: 8px;
+      background: #FFFFFF; color: var(--text-sec);
+      font-size: 11px; font-family: var(--font-mono);
+    }
+    .risk-error { color: var(--theme-conflict); border-color: rgba(239,68,68,.25); }
+    .risk-research-strip .held {
+      color: #92400E; background: rgba(245,158,11,.12);
+      border: 1px solid rgba(245,158,11,.25);
+      border-radius: 999px; padding: 2px 7px;
+    }
+    .risk-research-strip .promoted {
+      color: #166534; background: rgba(34,197,94,.12);
+      border: 1px solid rgba(34,197,94,.25);
+      border-radius: 999px; padding: 2px 7px;
+    }
+    .risk-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.65fr);
+      gap: 12px;
+      align-items: start;
+    }
+    .risk-table-wrap, .risk-detail-card { overflow: hidden; }
+    .risk-section-head {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 10px; padding: 11px 12px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+    .risk-table { display: flex; flex-direction: column; max-height: 560px; overflow: auto; }
+    .risk-row {
+      display: grid; grid-template-columns: 64px minmax(180px, 1fr) 92px 112px;
+      gap: 10px; align-items: center;
+      width: 100%; border: 0; border-bottom: 1px solid var(--border);
+      background: #FFFFFF; color: var(--text); text-align: left;
+      padding: 10px 12px; cursor: pointer;
+      font-family: var(--font-mono); font-size: 11px;
+    }
+    .risk-row:hover, .risk-row.selected { background: var(--surface); }
+    .risk-row-head {
+      position: sticky; top: 0; z-index: 1; cursor: default;
+      background: #FAFAFA; color: var(--text-muted);
+      font-size: 9px; font-weight: 800; letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .risk-row strong {
+      display: block; font-size: 12px; color: var(--text);
+      font-family: var(--font-sans); font-weight: 700;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .risk-row em {
+      display: block; margin-top: 2px; color: var(--text-muted);
+      font-style: normal; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .risk-row .hit { color: #166534; font-weight: 800; }
+    .risk-row .miss { color: #92400E; font-weight: 800; }
+    .risk-detail-card { padding-bottom: 12px; }
+    .risk-detail-card h2 {
+      margin: 14px 14px 4px; font-size: 18px;
+      letter-spacing: -0.02em; line-height: 1.2;
+    }
+    .risk-score-big {
+      margin: 0 14px 12px; font-size: 34px; line-height: 1;
+      font-weight: 800; font-family: var(--font-mono);
+      letter-spacing: -0.03em;
+    }
+    .risk-outcome {
+      margin: 0 14px 12px; padding: 10px;
+      border-radius: 8px; background: var(--surface);
+      border: 1px solid var(--border);
+    }
+    .risk-outcome span {
+      display: block; font-size: 9px; font-weight: 800;
+      letter-spacing: 0.08em; text-transform: uppercase;
+      color: var(--text-muted); font-family: var(--font-mono);
+    }
+    .risk-outcome strong {
+      display: block; margin-top: 4px; font-size: 12px; line-height: 1.45;
+      color: var(--text);
+    }
+    .risk-driver-list {
+      margin: 0 14px; border: 1px solid var(--border);
+      border-radius: 8px; overflow: hidden;
+    }
+    .risk-driver {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 12px; padding: 9px 10px;
+      border-bottom: 1px solid var(--border);
+      font-size: 11px;
+    }
+    .risk-driver:last-child { border-bottom: 0; }
+    .risk-driver span { color: var(--text-sec); }
+    .risk-driver strong { font-family: var(--font-mono); color: var(--text); }
+    .risk-caveat, .risk-empty {
+      margin: 12px 14px 0; color: var(--text-sec);
+      font-size: 11px; line-height: 1.55;
+    }
+
+    /* ── MVP queue ──────────────────────────────────────────────────────── */
+    .queue-view {
+      height: 100%;
+      overflow: auto;
+      padding: 22px;
+      background: #F8FAFC;
+    }
+    .queue-hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 16px;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+    .queue-hero h1 {
+      margin: 0;
+      font-size: 24px;
+      line-height: 1.12;
+      letter-spacing: -0.02em;
+    }
+    .queue-hero p {
+      margin: 7px 0 0;
+      max-width: 760px;
+      color: var(--text-sec);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .flow-strip {
+      display: inline-flex;
+      gap: 5px;
+      padding: 5px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #FFFFFF;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 800;
+      color: var(--text-sec);
+      white-space: nowrap;
+    }
+    .flow-strip span {
+      padding: 5px 8px;
+      border-radius: 6px;
+      background: var(--surface);
+    }
+    .queue-grid {
+      display: grid;
+      grid-template-columns: minmax(360px, 1.1fr) minmax(360px, 0.9fr);
+      gap: 12px;
+      align-items: start;
+    }
+    .queue-list-panel, .brief-panel {
+      border: 1px solid var(--border-hi);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: var(--shadow-sm);
+      overflow: hidden;
+    }
+    .queue-list {
+      display: flex;
+      flex-direction: column;
+      max-height: 650px;
+      overflow: auto;
+    }
+    .queue-item {
+      display: grid;
+      grid-template-columns: 48px minmax(0, 1fr) 82px;
+      gap: 10px;
+      align-items: center;
+      width: 100%;
+      padding: 11px 12px;
+      border: 0;
+      border-bottom: 1px solid var(--border);
+      background: #FFFFFF;
+      color: var(--text);
+      cursor: pointer;
+      text-align: left;
+    }
+    .queue-item:hover, .queue-item.selected { background: var(--surface); }
+    .queue-rank {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 900;
+      color: var(--text-muted);
+    }
+    .queue-main { min-width: 0; }
+    .queue-main strong {
+      display: block;
+      font-size: 13px;
+      line-height: 1.25;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .queue-main em {
+      display: block;
+      margin-top: 3px;
+      font-style: normal;
+      font-size: 11px;
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .queue-scores {
+      text-align: right;
+      font-family: var(--font-mono);
+    }
+    .queue-scores b {
+      display: block;
+      font-size: 20px;
+      line-height: 1;
+    }
+    .queue-scores small {
+      display: block;
+      margin-top: 4px;
+      font-size: 9px;
+      color: var(--text-muted);
+    }
+    .brief-panel { padding: 16px; }
+    .brief-topline {
+      display: flex;
+      justify-content: space-between;
+      gap: 14px;
+      align-items: flex-start;
+      margin-bottom: 14px;
+    }
+    .brief-topline h2 {
+      margin: 2px 0 4px;
+      font-size: 21px;
+      line-height: 1.18;
+      letter-spacing: -0.02em;
+    }
+    .brief-topline p {
+      margin: 0;
+      color: var(--text-sec);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .priority-badge {
+      min-width: 88px;
+      border: 1px solid rgba(239,68,68,.22);
+      border-radius: 8px;
+      padding: 8px;
+      text-align: center;
+      background: rgba(239,68,68,.07);
+    }
+    .priority-badge span {
+      display: block;
+      font-size: 9px;
+      font-family: var(--font-mono);
+      font-weight: 800;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .priority-badge strong {
+      display: block;
+      margin-top: 2px;
+      font-size: 30px;
+      font-family: var(--font-mono);
+      line-height: 1;
+    }
+    .brief-scores {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .scorebar-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 10px;
+      font-family: var(--font-mono);
+      color: var(--text-sec);
+      margin-bottom: 6px;
+    }
+    .scorebar-head strong { color: var(--text); }
+    .scorebar-track {
+      height: 6px;
+      border-radius: 999px;
+      background: var(--surface-hi);
+      overflow: hidden;
+    }
+    .scorebar-fill {
+      height: 100%;
+      border-radius: inherit;
+      background: var(--text);
+    }
+    .scorebar-fill.danger { background: linear-gradient(90deg, #F97316, #EF4444); }
+    .scorebar-fill.ripple { background: linear-gradient(90deg, #0EA5E9, #6366F1); }
+    .brief-section {
+      padding: 12px 0;
+      border-top: 1px solid var(--border);
+    }
+    .brief-label {
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      margin-bottom: 8px;
+    }
+    .channel-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .channel-row span {
+      padding: 5px 8px;
+      border-radius: 999px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-sec);
+    }
+    .why-list {
+      margin: 0;
+      padding-left: 17px;
+      color: var(--text-sec);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+    .brief-facts {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+      padding: 12px 0;
+      border-top: 1px solid var(--border);
+    }
+    .brief-facts div {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px;
+      background: #FFFFFF;
+      min-width: 0;
+    }
+    .brief-facts span {
+      display: block;
+      font-size: 9px;
+      font-family: var(--font-mono);
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .brief-facts strong {
+      display: block;
+      margin-top: 4px;
+      font-size: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .decision-box {
+      padding: 12px;
+      border-radius: 8px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+    }
+    .decision-row {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .decision-row button, .brief-actions button, .brief-actions a {
+      border: 1px solid var(--border-hi);
+      background: #FFFFFF;
+      color: var(--text);
+      border-radius: 7px;
+      padding: 8px 10px;
+      font-size: 11px;
+      font-weight: 800;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .decision-row button.on {
+      background: var(--text);
+      color: var(--bg);
+      border-color: var(--text);
+    }
+    .decision-box p {
+      margin: 9px 0 0;
+      color: var(--text-sec);
+      font-size: 11px;
+      line-height: 1.45;
+    }
+    .brief-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
+
     /* ── Footer ──────────────────────────────────────────────────────────── */
     .app-footer {
       flex-shrink: 0;
@@ -970,11 +1459,26 @@
 
     /* ── Mobile ──────────────────────────────────────────────────────────── */
     @media (max-width: 600px) {
+      .topbar { gap: 8px; padding: 0 10px; }
       .topbar-stats { display: none; }
       .topbar-brand { font-size: 18px; }
+      .topbar-right { display: none; }
+      .view-tab { padding: 5px 7px; }
       .filter-panel { width: calc(100vw - 24px); max-width: 300px; }
       .detail-panel { width: 100vw; }
       .map-legend   { display: none; }
+      .risk-view { padding: 12px; }
+      .risk-head, .risk-grid { grid-template-columns: 1fr; }
+      .risk-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .risk-metric.wide { grid-column: 1 / -1; }
+      .risk-row { grid-template-columns: 44px minmax(120px, 1fr) 72px 86px; gap: 6px; padding: 9px 8px; }
+      .risk-row strong { font-size: 11px; }
+      .queue-view { padding: 12px; }
+      .queue-hero, .queue-grid { grid-template-columns: 1fr; }
+      .flow-strip { overflow-x: auto; }
+      .queue-item { grid-template-columns: 40px minmax(0, 1fr) 72px; padding: 10px 8px; }
+      .brief-panel { padding: 12px; }
+      .brief-scores, .brief-facts { grid-template-columns: 1fr 1fr; }
     }
   </style>
 </head>
