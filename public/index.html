@@ -974,6 +974,53 @@
       border-radius: 6px;
       background: var(--surface);
     }
+    .queue-filter-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: flex-end;
+      padding: 12px;
+      margin-bottom: 12px;
+      border: 1px solid var(--border-hi);
+      border-radius: 8px;
+      background: #FFFFFF;
+      box-shadow: var(--shadow-sm);
+    }
+    .queue-filter-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-width: 150px;
+    }
+    .queue-filter-group > span, .queue-export-box > span {
+      font-size: 9px;
+      font-family: var(--font-mono);
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+    }
+    .queue-export-box {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-left: auto;
+      align-items: flex-end;
+    }
+    .queue-export-box button {
+      border: 1px solid var(--border-hi);
+      background: var(--text);
+      color: var(--bg);
+      border-radius: 7px;
+      padding: 8px 10px;
+      font-size: 11px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .queue-export-box button:disabled {
+      cursor: not-allowed;
+      opacity: 0.45;
+    }
     .queue-grid {
       display: grid;
       grid-template-columns: minmax(360px, 1.1fr) minmax(360px, 0.9fr);
@@ -995,7 +1042,7 @@
     }
     .queue-item {
       display: grid;
-      grid-template-columns: 48px minmax(0, 1fr) 82px;
+      grid-template-columns: 48px minmax(0, 1fr) 82px 92px;
       gap: 10px;
       align-items: center;
       width: 100%;
@@ -1047,6 +1094,41 @@
       margin-top: 4px;
       font-size: 9px;
       color: var(--text-muted);
+      text-transform: capitalize;
+    }
+    .recommendation-pill {
+      justify-self: end;
+      padding: 5px 8px;
+      border-radius: 999px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text-sec);
+    }
+    .recommendation-pill.assign, .recommendation-badge.assign {
+      border-color: rgba(220,38,38,.28);
+      background: rgba(239,68,68,.08);
+      color: #B91C1C;
+    }
+    .recommendation-pill.watch, .recommendation-badge.watch {
+      border-color: rgba(217,119,6,.30);
+      background: rgba(245,158,11,.10);
+      color: #B45309;
+    }
+    .recommendation-pill.dismiss, .recommendation-badge.dismiss {
+      border-color: rgba(107,114,128,.26);
+      background: rgba(107,114,128,.08);
+      color: #4B5563;
+    }
+    .queue-empty {
+      padding: 26px 14px;
+      color: var(--text-sec);
+      font-size: 12px;
+      text-align: center;
     }
     .brief-panel { padding: 16px; }
     .brief-topline {
@@ -1088,9 +1170,23 @@
     .priority-badge strong {
       display: block;
       margin-top: 2px;
-      font-size: 30px;
+      font-size: 26px;
       font-family: var(--font-mono);
       line-height: 1;
+    }
+    .priority-badge small {
+      display: block;
+      margin-top: 4px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 800;
+      color: currentColor;
+    }
+    .assignment-reco-copy, .quiet-note {
+      margin: 0 0 14px;
+      color: var(--text-sec);
+      font-size: 12px;
+      line-height: 1.5;
     }
     .brief-scores {
       display: grid;
@@ -1125,6 +1221,39 @@
       padding: 12px 0;
       border-top: 1px solid var(--border);
     }
+    .assignment-summary {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+    .assignment-summary div {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px;
+      background: #FFFFFF;
+      min-width: 0;
+    }
+    .assignment-summary span {
+      display: block;
+      font-size: 9px;
+      font-family: var(--font-mono);
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .assignment-summary strong {
+      display: block;
+      margin-top: 4px;
+      font-size: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      text-transform: capitalize;
+    }
+    .evidence-grade.strong { color: #047857; }
+    .evidence-grade.partial { color: #B45309; }
+    .evidence-grade.thin { color: #B91C1C; }
     .brief-label {
       font-size: 9px;
       font-weight: 800;
@@ -1152,6 +1281,13 @@
       margin: 0;
       padding-left: 17px;
       color: var(--text-sec);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+    .warning-list {
+      margin: 0;
+      padding-left: 17px;
+      color: #92400E;
       font-size: 12px;
       line-height: 1.6;
     }
@@ -1475,10 +1611,14 @@
       .risk-row strong { font-size: 11px; }
       .queue-view { padding: 12px; }
       .queue-hero, .queue-grid { grid-template-columns: 1fr; }
+      .queue-filter-bar { align-items: stretch; }
+      .queue-filter-group, .queue-export-box { width: 100%; align-items: stretch; margin-left: 0; }
       .flow-strip { overflow-x: auto; }
-      .queue-item { grid-template-columns: 40px minmax(0, 1fr) 72px; padding: 10px 8px; }
+      .queue-item { grid-template-columns: 38px minmax(0, 1fr) 70px; padding: 10px 8px; }
+      .recommendation-pill { grid-column: 2 / 3; justify-self: start; }
+      .queue-scores { grid-column: 3 / 4; grid-row: 1 / 3; }
       .brief-panel { padding: 12px; }
-      .brief-scores, .brief-facts { grid-template-columns: 1fr 1fr; }
+      .brief-scores, .brief-facts, .assignment-summary { grid-template-columns: 1fr 1fr; }
     }
   </style>
 </head>

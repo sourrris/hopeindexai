@@ -26,6 +26,24 @@ const CATEGORIES  = ["All", "Diplomacy", "Conflict", "Econ", "Environment", "Hum
 const DAY_OPTIONS = [1, 3, 7, 30];
 
 const GITHUB_URL = "https://github.com/sourrris/hopeindexai";
+const ASSIGNMENT_STORAGE_KEY = "hopeindexai.assignmentDecisions.v1";
+
+const ASSIGNMENT_THRESHOLDS = {
+  assign: 72,
+  watch: 52,
+};
+
+const RECOMMENDATION_META = {
+  assign: { label: "Assign", description: "Send this event for deeper investigation." },
+  watch: { label: "Watch", description: "Keep monitoring until more evidence arrives." },
+  dismiss: { label: "Dismiss", description: "Treat as background noise for now." },
+};
+
+const DECISION_OPTIONS = [
+  { value: "assign", label: "Assign" },
+  { value: "watch", label: "Watch" },
+  { value: "dismiss", label: "Dismiss" },
+];
 
 const STRATEGIC_ACTORS = new Set([
   "US", "USA", "AMERICAN", "UNITED", "RUSSIA", "RUSSIAN", "UKRAINE", "KYIV", "KIEV",
@@ -161,6 +179,128 @@ function eventWhy(event) {
   return reasons.length ? reasons.slice(0, 5) : ["ranked by event severity, source signal, and model surface score"];
 }
 
+function assignmentPriority(event) {
+  return clampScore(Number.isFinite(event.surfaceScore) ? event.surfaceScore : eventMvpScore(event));
+}
+
+function assignmentRecommendation(priority) {
+  if (priority >= ASSIGNMENT_THRESHOLDS.assign) return "assign";
+  if (priority >= ASSIGNMENT_THRESHOLDS.watch) return "watch";
+  return "dismiss";
+}
+
+function displayReason(reason) {
+  if (!reason) return "";
+  return reason.startsWith("penalty: ")
+    ? `Caveat: ${reason.slice("penalty: ".length)}`
+    : reason;
+}
+
+function assignmentReasonCodes(event) {
+  const surfaced = (event.surfaceReasons ?? []).map(displayReason).filter(Boolean);
+  const fallback = eventWhy(event);
+  return [...new Set([...surfaced, ...fallback])].slice(0, 7);
+}
+
+function assignmentWarnings(event) {
+  const warnings = [];
+  const reasons = (event.surfaceReasons ?? []).join(" ").toLowerCase();
+
+  if (!event.sourceUrl) warnings.push("No source URL attached to this public row.");
+  if (event.duplicateOf) warnings.push(`Duplicate row. Review representative event ${event.duplicateOf}.`);
+  if (Number(event.numMentions ?? 0) <= 1) warnings.push("Single-mention signal; corroboration is weak.");
+  if (reasons.includes("generic gdelt extraction")) warnings.push("Generic GDELT extraction may have weak actor or event parsing.");
+  if (reasons.includes("background or source-mismatch")) warnings.push("Possible background article or source mismatch.");
+  if (reasons.includes("local crime")) warnings.push("May be local crime rather than strategic geopolitical signal.");
+  if (reasons.includes("entertainment/history")) warnings.push("May be entertainment or historical extraction noise.");
+  if (reasons.includes("opinion/background")) warnings.push("Opinion or background source; avoid treating interpretation as fact.");
+
+  return [...new Set(warnings)].slice(0, 5);
+}
+
+function assignmentEvidenceGrade(event, warnings) {
+  const hasSource = Boolean(event.sourceUrl);
+  const mentions = Number(event.numMentions ?? 0);
+  const severeWarning = warnings.some((warning) =>
+    warning.includes("Duplicate") ||
+    warning.includes("Generic") ||
+    warning.includes("source mismatch") ||
+    warning.includes("local crime") ||
+    warning.includes("entertainment")
+  );
+
+  if (!hasSource || mentions <= 1 || severeWarning) return "thin";
+  if (mentions >= 20 && Number(event.surfaceClusterSize ?? 0) > 1) return "strong";
+  if (mentions >= 10 && !warnings.length) return "strong";
+  return "partial";
+}
+
+function assignmentPacket(event) {
+  const priority = assignmentPriority(event);
+  const recommendation = assignmentRecommendation(priority);
+  const warnings = assignmentWarnings(event);
+
+  return {
+    event,
+    priority,
+    recommendation,
+    evidenceGrade: assignmentEvidenceGrade(event, warnings),
+    danger: eventDangerScore(event),
+    ripple: eventRippleScore(event),
+    channels: eventImpactChannels(event),
+    reasonCodes: assignmentReasonCodes(event),
+    warnings,
+  };
+}
+
+function readAssignmentDecisions() {
+  try {
+    const raw = localStorage.getItem(ASSIGNMENT_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return Object.fromEntries(
+      Object.entries(parsed).filter(([, record]) =>
+        record &&
+        typeof record === "object" &&
+        ["assign", "watch", "dismiss"].includes(record.decision)
+      )
+    );
+  } catch {
+    return {};
+  }
+}
+
+function writeAssignmentDecisions(decisions) {
+  try {
+    localStorage.setItem(ASSIGNMENT_STORAGE_KEY, JSON.stringify(decisions));
+  } catch {
+    // Local storage can be disabled; the UI still works for the current session.
+  }
+}
+
+function downloadAssignmentDecisions(decisions) {
+  const rows = Object.values(decisions)
+    .filter(Boolean)
+    .sort((a, b) => String(a.decidedAt).localeCompare(String(b.decidedAt)));
+  const payload = {
+    exportVersion: "hopeindexai.assignmentDecisions.v1",
+    exportedAt: new Date().toISOString(),
+    storageKey: ASSIGNMENT_STORAGE_KEY,
+    warning: "Prototype review notes only. These are not source-checked human ground-truth labels and do not modify eval files.",
+    decisions: rows,
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `hopeindexai-assignment-decisions-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 function scoreRelatedSignal(target, candidate) {
   if (!target || !candidate || target.id === candidate.id) return null;
 
@@ -288,7 +428,7 @@ function TopBar({ globalHopeAverage, eventCount, activeView, onViewChange }) {
             className={"view-tab" + (activeView === "queue" ? " on" : "")}
             onClick={() => onViewChange("queue")}
           >
-            Risk Queue
+            Assignment Queue
           </button>
           <button
             type="button"
@@ -317,7 +457,7 @@ function TopBar({ globalHopeAverage, eventCount, activeView, onViewChange }) {
           <div className="topbar-stats">
             <span className="stat-pill hope">
               <span className="stat-dot hope" aria-hidden="true" />
-              Signal Triage Score: {globalHopeAverage.toFixed(1)}/100
+              Assignment Triage Score: {globalHopeAverage.toFixed(1)}/100
             </span>
             <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--text-sec)", marginLeft: 2 }}>
               ({eventCount.toLocaleString()} events clustered)
@@ -1185,7 +1325,7 @@ function RiskWindowsView() {
   );
 }
 
-// ── MVP risk queue ───────────────────────────────────────────────────────────
+// ── Assignment queue ─────────────────────────────────────────────────────────
 
 function ScoreBar({ label, value, tone }) {
   return (
@@ -1201,19 +1341,61 @@ function ScoreBar({ label, value, tone }) {
   );
 }
 
-function GlobalRiskQueue({ events, loading, selectedEvent, onFocusEvent, onOpenMap }) {
-  const [decisionById, setDecisionById] = useState({});
+function QueueFilterGroup({ label, options, value, onChange, colorize }) {
+  return (
+    <div className="queue-filter-group">
+      <span>{label}</span>
+      <div className="chip-row">
+        {options.map((option) => {
+          const isOn = value === option;
+          return (
+            <button
+              type="button"
+              key={option}
+              className={`chip${isOn ? " on" : ""}`}
+              onClick={() => onChange(option)}
+              aria-pressed={isOn}
+              style={isOn && colorize && option !== "All" ? { background: THEME_COLORS[option], borderColor: THEME_COLORS[option] } : {}}
+            >
+              {typeof option === "number" ? `${option}d` : option}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function QueueFilterBar({ filters, onFilter, loading, resultCount, decisionCount, onExport }) {
+  const setDays = (days) => onFilter({ ...filters, days });
+  const setContinent = (continent) => onFilter({ ...filters, continent });
+  const setCategory = (category) => onFilter({ ...filters, category });
+
+  return (
+    <div className="queue-filter-bar" aria-label="Assignment queue filters">
+      <QueueFilterGroup label="Range" options={DAY_OPTIONS} value={filters.days} onChange={setDays} />
+      <QueueFilterGroup label="Region" options={CONTINENTS} value={filters.continent} onChange={setContinent} />
+      <QueueFilterGroup label="Theme" options={CATEGORIES} value={filters.category} onChange={setCategory} colorize />
+      <div className="queue-export-box">
+        <span>{loading ? "loading" : `${resultCount} shown`} · {decisionCount} local notes</span>
+        <button type="button" onClick={onExport} disabled={decisionCount === 0}>
+          Export notes
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function GlobalRiskQueue({ events, loading, selectedEvent, onFocusEvent, onOpenMap, filters, onFilter }) {
+  const [decisionById, setDecisionById] = useState(readAssignmentDecisions);
+
+  useEffect(() => {
+    writeAssignmentDecisions(decisionById);
+  }, [decisionById]);
 
   const rankedEvents = useMemo(() => [...events]
     .filter((event) => event.duplicateOf == null)
-    .map((event) => ({
-      event,
-      danger: eventDangerScore(event),
-      ripple: eventRippleScore(event),
-      priority: eventMvpScore(event),
-      channels: eventImpactChannels(event),
-      why: eventWhy(event),
-    }))
+    .map(assignmentPacket)
     .sort((a, b) =>
       b.priority - a.priority ||
       b.ripple - a.ripple ||
@@ -1226,56 +1408,108 @@ function GlobalRiskQueue({ events, loading, selectedEvent, onFocusEvent, onOpenM
     : rankedEvents[0];
 
   useEffect(() => {
-    if (!selectedEvent && rankedEvents[0]) onFocusEvent(rankedEvents[0].event);
+    const selectedStillVisible = selectedEvent && rankedEvents.some((item) => item.event.id === selectedEvent.id);
+    if ((!selectedEvent || !selectedStillVisible) && rankedEvents[0]) onFocusEvent(rankedEvents[0].event);
   }, [rankedEvents, selectedEvent, onFocusEvent]);
 
-  const decision = selected ? decisionById[selected.event.id] : "";
+  const selectedDecision = selected ? decisionById[selected.event.id] : null;
+  const decisionCount = Object.keys(decisionById).length;
 
   const setDecision = (nextDecision) => {
     if (!selected) return;
-    setDecisionById((prev) => ({ ...prev, [selected.event.id]: nextDecision }));
+    const event = selected.event;
+    const decisionLabel = DECISION_OPTIONS.find((option) => option.value === nextDecision)?.label ?? nextDecision;
+
+    setDecisionById((prev) => ({
+      ...prev,
+      [event.id]: {
+        eventId: event.id,
+        decision: nextDecision,
+        decisionLabel,
+        decidedAt: new Date().toISOString(),
+        noteType: "prototype_review_note_not_source_checked_ground_truth",
+        recommendation: selected.recommendation,
+        recommendationLabel: RECOMMENDATION_META[selected.recommendation].label,
+        priority: selected.priority,
+        evidenceGrade: selected.evidenceGrade,
+        eventSummary: {
+          title: eventTitle(event),
+          date: event.date,
+          location: event.location || event.country,
+          country: event.country,
+          continent: event.continent,
+          theme: event.theme,
+          sourceUrl: event.sourceUrl,
+        },
+      },
+    }));
+  };
+
+  const exportDecisions = () => {
+    downloadAssignmentDecisions(decisionById);
   };
 
   return (
-    <section className="queue-view" aria-label="Global risk queue">
+    <section className="queue-view" aria-label="Assignment queue">
       <div className="queue-hero">
         <div>
-          <div className="risk-kicker">MVP flow</div>
-          <h1>Top dangerous signals with ripple potential</h1>
-          <p>Start at rank #1, inspect the impact brief, then decide whether a human should watch, escalate, or mark it as noise.</p>
+          <div className="risk-kicker">OSINT watch workflow</div>
+          <h1>Assignment queue for deeper investigation</h1>
+          <p>Start at rank #1, inspect the evidence packet, then decide whether this public event should be assigned, watched, or dismissed.</p>
         </div>
-        <div className="flow-strip" aria-label="Risk workflow">
+        <div className="flow-strip" aria-label="Assignment workflow">
           <span>1 Rank</span>
-          <span>2 Inspect</span>
-          <span>3 Decide</span>
+          <span>2 Check evidence</span>
+          <span>3 Assign / Watch / Dismiss</span>
         </div>
       </div>
+
+      <QueueFilterBar
+        filters={filters}
+        onFilter={onFilter}
+        loading={loading}
+        resultCount={rankedEvents.length}
+        decisionCount={decisionCount}
+        onExport={exportDecisions}
+      />
 
       <div className="queue-grid">
         <div className="queue-list-panel">
           <div className="risk-section-head">
-            <span>Priority queue</span>
+            <span>Investigation priority</span>
             <span>{loading ? "loading" : `${rankedEvents.length} signals`}</span>
           </div>
           <div className="queue-list">
-            {rankedEvents.map((item, index) => (
-              <button
-                type="button"
-                key={item.event.id}
-                className={"queue-item" + (selected?.event.id === item.event.id ? " selected" : "")}
-                onClick={() => onFocusEvent(item.event)}
-              >
-                <span className="queue-rank">#{index + 1}</span>
-                <span className="queue-main">
-                  <strong>{eventTitle(item.event)}</strong>
-                  <em>{item.event.location || item.event.country} · {item.event.date}</em>
-                </span>
-                <span className="queue-scores">
-                  <b>{item.priority}</b>
-                  <small>D {item.danger} / R {item.ripple}</small>
-                </span>
-              </button>
-            ))}
+            {rankedEvents.length === 0 && (
+              <div className="queue-empty">
+                No assignment candidates match the current filters.
+              </div>
+            )}
+            {rankedEvents.map((item, index) => {
+              const rowDecision = decisionById[item.event.id];
+              return (
+                <button
+                  type="button"
+                  key={item.event.id}
+                  className={"queue-item" + (selected?.event.id === item.event.id ? " selected" : "")}
+                  onClick={() => onFocusEvent(item.event)}
+                >
+                  <span className="queue-rank">#{index + 1}</span>
+                  <span className="queue-main">
+                    <strong>{eventTitle(item.event)}</strong>
+                    <em>{item.event.location || item.event.country} · {item.event.date}</em>
+                    {rowDecision && <em>Local decision: {rowDecision.decisionLabel}</em>}
+                  </span>
+                  <span className={`recommendation-pill ${item.recommendation}`}>
+                    {RECOMMENDATION_META[item.recommendation].label}
+                  </span>
+                  <span className="queue-scores">
+                    <b>{item.priority}</b>
+                    <small>{item.evidenceGrade} evidence</small>
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -1284,19 +1518,43 @@ function GlobalRiskQueue({ events, loading, selectedEvent, onFocusEvent, onOpenM
             <>
               <div className="brief-topline">
                 <div>
-                  <div className="risk-kicker">Impact brief</div>
+                  <div className="risk-kicker">Assignment packet</div>
                   <h2>{eventTitle(selected.event)}</h2>
                   <p>{selected.event.location || selected.event.country} · {selected.event.date}</p>
                 </div>
-                <div className="priority-badge">
-                  <span>Priority</span>
-                  <strong>{selected.priority}</strong>
+                <div className={`priority-badge recommendation-badge ${selected.recommendation}`}>
+                  <span>Recommendation</span>
+                  <strong>{RECOMMENDATION_META[selected.recommendation].label}</strong>
+                  <small>{selected.priority}/100</small>
                 </div>
               </div>
+
+              <p className="assignment-reco-copy">
+                {RECOMMENDATION_META[selected.recommendation].description} This recommendation is a ranking aid, not verified truth.
+              </p>
 
               <div className="brief-scores">
                 <ScoreBar label="Direct danger" value={selected.danger} tone="danger" />
                 <ScoreBar label="Ripple potential" value={selected.ripple} tone="ripple" />
+              </div>
+
+              <div className="assignment-summary">
+                <div>
+                  <span>Evidence grade</span>
+                  <strong className={`evidence-grade ${selected.evidenceGrade}`}>{selected.evidenceGrade}</strong>
+                </div>
+                <div>
+                  <span>Source</span>
+                  <strong>{sourceHost(selected.event.sourceUrl) || "none"}</strong>
+                </div>
+                <div>
+                  <span>Cluster rows</span>
+                  <strong>{Number(selected.event.surfaceClusterSize ?? 1).toLocaleString()}</strong>
+                </div>
+                <div>
+                  <span>Model probability</span>
+                  <strong>{Number.isFinite(selected.event.surfaceModelProbability) ? `${Math.round(selected.event.surfaceModelProbability * 100)}%` : "n/a"}</strong>
+                </div>
               </div>
 
               <div className="brief-section">
@@ -1307,10 +1565,21 @@ function GlobalRiskQueue({ events, loading, selectedEvent, onFocusEvent, onOpenM
               </div>
 
               <div className="brief-section">
-                <div className="brief-label">Why it is ranked here</div>
+                <div className="brief-label">Reason codes</div>
                 <ul className="why-list">
-                  {selected.why.map((reason) => <li key={reason}>{reason}</li>)}
+                  {selected.reasonCodes.map((reason) => <li key={reason}>{reason}</li>)}
                 </ul>
+              </div>
+
+              <div className="brief-section">
+                <div className="brief-label">Source and row warnings</div>
+                {selected.warnings.length > 0 ? (
+                  <ul className="warning-list">
+                    {selected.warnings.map((warning) => <li key={warning}>{warning}</li>)}
+                  </ul>
+                ) : (
+                  <p className="quiet-note">No major row caveats from the current metadata. The source still needs human checking before becoming ground truth.</p>
+                )}
               </div>
 
               <div className="brief-facts">
@@ -1321,20 +1590,24 @@ function GlobalRiskQueue({ events, loading, selectedEvent, onFocusEvent, onOpenM
               </div>
 
               <div className="decision-box">
-                <div className="brief-label">Human decision</div>
+                <div className="brief-label">Analyst decision</div>
                 <div className="decision-row">
-                  {["Watch", "Escalate", "Noise"].map((label) => (
+                  {DECISION_OPTIONS.map((option) => (
                     <button
                       type="button"
-                      key={label}
-                      className={decision === label ? "on" : ""}
-                      onClick={() => setDecision(label)}
+                      key={option.value}
+                      className={selectedDecision?.decision === option.value ? "on" : ""}
+                      onClick={() => setDecision(option.value)}
                     >
-                      {label}
+                      {option.label}
                     </button>
                   ))}
                 </div>
-                <p>{decision ? `Marked as ${decision}. This is a local review note for the prototype.` : "No decision yet. The MVP should collect this as the human label."}</p>
+                <p>
+                  {selectedDecision
+                    ? `Marked as ${selectedDecision.decisionLabel} at ${new Date(selectedDecision.decidedAt).toLocaleString()}. This is a local prototype note, not source-checked ground truth.`
+                    : "No local decision yet. This tri-state choice is the future analyst label, but it does not modify eval files in this V1."}
+                </p>
               </div>
 
               <div className="brief-actions">
@@ -1349,7 +1622,7 @@ function GlobalRiskQueue({ events, loading, selectedEvent, onFocusEvent, onOpenM
               </div>
             </>
           ) : (
-            <div className="risk-empty">Loading the risk queue.</div>
+            <div className="risk-empty">Loading the assignment queue.</div>
           )}
         </aside>
       </div>
@@ -1460,8 +1733,8 @@ function App() {
     ), [events, filters.continent, filters.category]);
 
   const { globalHopeAverage, eventCount } = useMemo(() => {
-    const validEvents = filteredEvents.filter((e) => e.hopeScore !== undefined);
-    const sum = validEvents.reduce((acc, curr) => acc + curr.hopeScore, 0);
+    const validEvents = filteredEvents.filter((event) => Number.isFinite(eventSignalScore(event)));
+    const sum = validEvents.reduce((acc, curr) => acc + eventSignalScore(curr), 0);
     const avg = validEvents.length > 0 ? sum / validEvents.length : 50;
     return {
       globalHopeAverage: avg,
@@ -1505,6 +1778,8 @@ function App() {
             selectedEvent={selected}
             onFocusEvent={handleFocusEvent}
             onOpenMap={() => handleViewChange("events")}
+            filters={filters}
+            onFilter={handleFilter}
           />
         ) : view === "events" ? (
           <>

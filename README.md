@@ -1,8 +1,8 @@
 # HopeIndexAI
 
-Human-in-the-loop signal triage from noisy public data.
+Human-in-the-loop OSINT assignment triage from noisy public data.
 
-HopeIndexAI maps a small GDELT-style event slice, ranks which signals deserve attention, and keeps model output separate from source-checked human ground truth. It is a triage prototype, not a verified forecasting system.
+HopeIndexAI helps OSINT watch analysts rank noisy public event rows and decide which few deserve deeper investigation. It keeps model output separate from source-checked human ground truth. It is a triage prototype, not a verified forecasting system.
 
 In simple ML terms: the model is the student, and source-checked human labels are the answer key.
 
@@ -67,6 +67,16 @@ bun run eval:phase1
 
 The current metrics are useful for product triage, but they are not final proof. LLM-reviewed labels are like practice notes; source-checked human labels are the answer key.
 
+## Assignment Queue
+
+The default workflow is built around one watch-analyst decision:
+
+```text
+Should this public event be assigned for deeper investigation?
+```
+
+The UI recommends `Assign`, `Watch`, or `Dismiss` from the existing `surfaceScore` thresholds and lets the analyst save local prototype notes in the browser. Those exported notes are not source-checked human ground truth and do not modify eval files.
+
 ## Architecture
 
 ```text
@@ -74,7 +84,8 @@ public/data/events.json
 -> Hono API
 -> event window filtering
 -> surfaceScore sorting
--> React + Leaflet map
+-> assignment queue
+-> React + Leaflet map context
 -> event detail and AI probe flow
 
 data/eval/phase1_labels.jsonl

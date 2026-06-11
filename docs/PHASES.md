@@ -10,6 +10,8 @@ HopeIndexAI is a triage prototype, not a verified forecasting system.
 
 In simple ML terms: the model is the student, and source-checked human labels are the answer key. LLM/Codex labels are useful practice notes, but only source-checked human-reviewed labels can prove improvement.
 
+The V1 target user is an OSINT watch analyst. The main product decision is whether a noisy public event should be assigned for deeper investigation.
+
 ## Phase Status
 
 | Phase | Name | Status | Proof |
@@ -66,6 +68,7 @@ Built now:
 - `/api/events` serves the checked-in event slice.
 - Event windows filter relative to the latest date in the dataset.
 - Event order uses `surfaceScore`, with `markerRadius` as fallback.
+- The default UI is an assignment queue with `Assign`, `Watch`, and `Dismiss` prototype decisions.
 - Ontology validation exists.
 - API smoke testing exists.
 - TypeScript checking exists.
@@ -87,6 +90,7 @@ Done means:
 - The eval report says whether improvement can or cannot be claimed.
 - No non-human label is marked `humanReviewed: true`.
 - Improvement claims require at least 100 source-checked human labels with `reviewContext.sourceChecked: true`.
+- Local browser assignment notes are not source-checked ground truth and do not update eval labels.
 - Root and `public/` frontend files stay in sync.
 
 Proof:

@@ -2,7 +2,7 @@
 
 This file keeps the bigger idea separate from the build plan.
 
-The short version: HopeIndexAI helps a person inspect noisy public geopolitical signals in a better order. It does not claim to know the future. It ranks events, shows evidence, and makes it easier to check whether the ranking was useful.
+The short version: HopeIndexAI helps an OSINT watch analyst inspect noisy public geopolitical signals in a better order and decide which events deserve deeper investigation. It does not claim to know the future. It ranks events, shows evidence, and makes it easier to check whether the ranking was useful.
 
 ## Product Question
 
@@ -10,6 +10,12 @@ The useful question is:
 
 ```text
 Given many noisy event rows, which few should a person inspect first?
+```
+
+For V1, the operational decision is:
+
+```text
+Should this public event be assigned for deeper investigation?
 ```
 
 That is narrower and more honest than:
@@ -45,6 +51,7 @@ If the labels are weak, the model proof is weak. If the actor names are messy, t
 ```text
 load event slice
 -> rank high-signal events
+-> recommend Assign / Watch / Dismiss
 -> inspect source evidence
 -> compare related signals
 -> reason about actor incentives
@@ -147,7 +154,7 @@ The near-term version should stay smaller:
 
 ```text
 good event slice
-clear surfacing order
+clear assignment order
 source-checked human labels
 repeatable eval
 honest report

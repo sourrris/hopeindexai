@@ -1,8 +1,8 @@
 # HopeIndexAI Case Study
 
-## Human-in-the-loop geopolitical event triage
+## Human-in-the-loop OSINT assignment triage
 
-HopeIndexAI is an intelligence triage prototype for noisy public event data. It ingests a small GDELT-style event slice, maps events globally, ranks which signals deserve attention, and keeps model output separate from source-checked human ground truth.
+HopeIndexAI is an intelligence triage prototype for noisy public event data. It ingests a small GDELT-style event slice, ranks which public signals deserve deeper investigation, and keeps model output separate from source-checked human ground truth.
 
 For the step-by-step build plan, see [docs/PHASES.md](./docs/PHASES.md). For the bigger product idea, see [docs/IDEA.md](./docs/IDEA.md).
 
@@ -10,17 +10,22 @@ The product question is not "can an AI summarize world news?" The useful questio
 
 > Given many noisy event rows, which few should an analyst inspect first?
 
+For V1, the target user is an OSINT watch analyst and the core decision is:
+
+> Should this public event be assigned for deeper investigation?
+
 That framing matters because GDELT rows are media-derived signals, not verified truth. Actor names are messy, rows duplicate the same article, local crime can look like strategic conflict, and historical or entertainment articles can be misclassified as current events. The system is designed around that uncertainty instead of hiding it.
 
 ## User workflow
 
-The target user is an analyst or operator who needs a fast first pass over public geopolitical signals.
+The target user is an OSINT watch analyst who needs a fast first pass over public geopolitical signals.
 
 1. Load a recent event slice.
 2. Filter by region and theme.
-3. Inspect surfaced lead and watch events first.
-4. Open an event detail panel for source context, related signals, and AI-assisted analysis.
-5. Mark source-checked labels during review so the ranking system can be evaluated later.
+3. Start with the assignment queue.
+4. Inspect recommendation, source caveats, related signals, and reason codes.
+5. Mark a local prototype decision: `Assign`, `Watch`, or `Dismiss`.
+6. Separately mark source-checked labels during review so the ranking system can be evaluated later.
 
 In simple ML terms, the model is the student and the labels are the answer key. HopeIndexAI does not let model-reviewed labels count as final proof. The Phase 1 report refuses to claim improvement until at least 100 source-checked human labels exist.
 
@@ -31,7 +36,8 @@ public/data/events.json
 -> Hono API
 -> event window filtering
 -> surfacing score sort
--> React + Leaflet map
+-> assignment queue
+-> React + Leaflet map context
 -> event detail and AI probe flow
 
 data/eval/phase1_labels.jsonl
@@ -116,6 +122,8 @@ The API smoke test verifies that the serverless handler starts, returns AI statu
 bun run test:smoke
 ```
 
+The V1 UI makes the assignment decision explicit. Local browser decisions are exportable prototype notes, but they are not source-checked human ground truth and do not modify eval files.
+
 ## Current limitations
 
 - The event dataset is a static 1,500-row public slice.
@@ -138,7 +146,7 @@ bun run test:smoke
 
 The concise story:
 
-> I built a human-in-the-loop event triage workflow for noisy geopolitical data. The hard part was not calling an AI model. The hard part was separating useful signals from duplicated, misclassified, and weak evidence, then refusing to claim model improvement until source-checked human labels exist.
+> I built a human-in-the-loop OSINT assignment workflow for noisy geopolitical data. The hard part was not calling an AI model. The hard part was separating useful investigation candidates from duplicated, misclassified, and weak evidence, then refusing to claim model improvement until source-checked human labels exist.
 
 The tradeoff:
 
