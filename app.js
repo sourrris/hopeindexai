@@ -45,6 +45,12 @@ const DECISION_OPTIONS = [
   { value: "dismiss", label: "Dismiss" },
 ];
 
+const QUEUE_MODES = [
+  { value: "priority", label: "Priority" },
+  { value: "uncertain", label: "Uncertain" },
+  { value: "coverage", label: "Coverage gaps" },
+];
+
 const STRATEGIC_ACTORS = new Set([
   "US", "USA", "AMERICAN", "UNITED", "RUSSIA", "RUSSIAN", "UKRAINE", "KYIV", "KIEV",
   "NATO", "IRAN", "ISRAEL", "ISRAELI", "LEBANON", "HEZBOLLAH", "HAMAS", "CHINA",
@@ -196,8 +202,60 @@ function displayReason(reason) {
     : reason;
 }
 
+function surfaceBandLabel(band) {
+  if (band === "lead") return "Likely high-importance lead";
+  if (band === "watch") return "Worth monitoring";
+  return "Background or weak signal";
+}
+
+function eventSurfaceExplanation(event) {
+  if (event.surfaceExplanation) return event.surfaceExplanation;
+  const score = assignmentPriority(event);
+  const band = score >= ASSIGNMENT_THRESHOLDS.assign ? "lead" : score >= ASSIGNMENT_THRESHOLDS.watch ? "watch" : "background";
+  const boosts = (event.surfaceReasons ?? []).filter((reason) => !reason.startsWith("penalty: ")).map(displayReason);
+  const penalties = (event.surfaceReasons ?? []).filter((reason) => reason.startsWith("penalty: ")).map((reason) => reason.slice("penalty: ".length));
+  const caveats = assignmentWarnings(event);
+
+  return {
+    score,
+    band,
+    label: surfaceBandLabel(band),
+    summary: `${surfaceBandLabel(band)} at ${score}/100.`,
+    boosts,
+    penalties,
+    caveats,
+  };
+}
+
+function eventUncertainty(event) {
+  if (event.uncertainty) return event.uncertainty;
+  const warnings = assignmentWarnings(event);
+  const thresholdDistance = Math.min(
+    Math.abs(assignmentPriority(event) - ASSIGNMENT_THRESHOLDS.assign),
+    Math.abs(assignmentPriority(event) - ASSIGNMENT_THRESHOLDS.watch)
+  );
+  let score = 18 + warnings.length * 12;
+  if (thresholdDistance <= 5) score += 14;
+  if (Number(event.numMentions ?? 0) >= 20) score -= 6;
+  score = clampScore(score);
+  return {
+    level: score >= 66 ? "high" : score >= 38 ? "medium" : "low",
+    score,
+    warnings,
+    confidenceDrivers: [
+      event.sourceUrl ? "Source URL is present." : null,
+      Number(event.numMentions ?? 0) >= 20 ? `${event.numMentions} media mentions.` : null,
+      Number(event.eventClusterSize ?? 0) > 1 ? `${event.eventClusterSize} likely incident-cluster rows.` : null,
+    ].filter(Boolean),
+  };
+}
+
 function assignmentReasonCodes(event) {
-  const surfaced = (event.surfaceReasons ?? []).map(displayReason).filter(Boolean);
+  const explanation = eventSurfaceExplanation(event);
+  const surfaced = [
+    ...(explanation.boosts ?? []),
+    ...(explanation.penalties ?? []).map((penalty) => `Caveat: ${penalty}`),
+  ].filter(Boolean);
   const fallback = eventWhy(event);
   return [...new Set([...surfaced, ...fallback])].slice(0, 7);
 }
@@ -214,6 +272,8 @@ function assignmentWarnings(event) {
   if (reasons.includes("local crime")) warnings.push("May be local crime rather than strategic geopolitical signal.");
   if (reasons.includes("entertainment/history")) warnings.push("May be entertainment or historical extraction noise.");
   if (reasons.includes("opinion/background")) warnings.push("Opinion or background source; avoid treating interpretation as fact.");
+  if (event.eventClusterRole === "member") warnings.push("Likely same-incident cluster member; review the representative first.");
+  if (event.uncertainty?.warnings?.length) warnings.push(...event.uncertainty.warnings);
 
   return [...new Set(warnings)].slice(0, 5);
 }
@@ -235,13 +295,36 @@ function assignmentEvidenceGrade(event, warnings) {
   return "partial";
 }
 
-function assignmentPacket(event) {
+function fallbackActiveLearning(event) {
+  const priority = assignmentPriority(event);
+  const uncertainty = eventUncertainty(event);
+  const thresholdDistance = Math.min(
+    Math.abs(priority - ASSIGNMENT_THRESHOLDS.assign),
+    Math.abs(priority - ASSIGNMENT_THRESHOLDS.watch)
+  );
+  const score = clampScore(priority * 0.5 + uncertainty.score * 0.3 + Math.max(0, 16 - thresholdDistance * 1.8));
+  return {
+    score,
+    reasons: [
+      priority >= ASSIGNMENT_THRESHOLDS.assign ? "High-priority surfaced lead." : "Useful row for queue calibration.",
+      uncertainty.score >= 66 ? "High uncertainty needs source checking." : null,
+    ].filter(Boolean),
+    components: { priority, uncertainty: uncertainty.score, threshold: Math.max(0, Math.round(16 - thresholdDistance * 1.8)), coverage: 0 },
+  };
+}
+
+function assignmentPacket(event, queueMeta = {}) {
   const priority = assignmentPriority(event);
   const recommendation = assignmentRecommendation(priority);
   const warnings = assignmentWarnings(event);
+  const activeLearning = queueMeta.activeLearning ?? fallbackActiveLearning(event);
 
   return {
     event,
+    rank: queueMeta.rank,
+    queueScore: queueMeta.queueScore ?? activeLearning.score,
+    queueMode: queueMeta.mode ?? "priority",
+    activeLearning,
     priority,
     recommendation,
     evidenceGrade: assignmentEvidenceGrade(event, warnings),
@@ -250,6 +333,8 @@ function assignmentPacket(event) {
     channels: eventImpactChannels(event),
     reasonCodes: assignmentReasonCodes(event),
     warnings,
+    uncertainty: eventUncertainty(event),
+    surfaceExplanation: eventSurfaceExplanation(event),
   };
 }
 
@@ -1366,7 +1451,31 @@ function QueueFilterGroup({ label, options, value, onChange, colorize }) {
   );
 }
 
-function QueueFilterBar({ filters, onFilter, loading, resultCount, decisionCount, onExport }) {
+function QueueModeGroup({ value, onChange }) {
+  return (
+    <div className="queue-filter-group queue-mode-group">
+      <span>Queue mode</span>
+      <div className="chip-row">
+        {QUEUE_MODES.map((mode) => {
+          const isOn = value === mode.value;
+          return (
+            <button
+              type="button"
+              key={mode.value}
+              className={`chip${isOn ? " on" : ""}`}
+              onClick={() => onChange(mode.value)}
+              aria-pressed={isOn}
+            >
+              {mode.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function QueueFilterBar({ filters, onFilter, loading, resultCount, decisionCount, onExport, queueMode, onQueueMode }) {
   const setDays = (days) => onFilter({ ...filters, days });
   const setContinent = (continent) => onFilter({ ...filters, continent });
   const setCategory = (category) => onFilter({ ...filters, category });
@@ -1376,6 +1485,7 @@ function QueueFilterBar({ filters, onFilter, loading, resultCount, decisionCount
       <QueueFilterGroup label="Range" options={DAY_OPTIONS} value={filters.days} onChange={setDays} />
       <QueueFilterGroup label="Region" options={CONTINENTS} value={filters.continent} onChange={setContinent} />
       <QueueFilterGroup label="Theme" options={CATEGORIES} value={filters.category} onChange={setCategory} colorize />
+      <QueueModeGroup value={queueMode} onChange={onQueueMode} />
       <div className="queue-export-box">
         <span>{loading ? "loading" : `${resultCount} shown`} · {decisionCount} local notes</span>
         <button type="button" onClick={onExport} disabled={decisionCount === 0}>
@@ -1386,22 +1496,240 @@ function QueueFilterBar({ filters, onFilter, loading, resultCount, decisionCount
   );
 }
 
-function GlobalRiskQueue({ events, loading, selectedEvent, onFocusEvent, onOpenMap, filters, onFilter }) {
+function ReviewerCopilotPanel({ event, apiKey, aiReady }) {
+  const [probe, setProbe] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [draftNote, setDraftNote] = useState("");
+  const [draftLoading, setDraftLoading] = useState(false);
+  const [draftError, setDraftError] = useState("");
+
+  useEffect(() => {
+    if (!event?.id) return;
+    const ctrl = new AbortController();
+    setProbe(null);
+    setError("");
+    setDraftNote("");
+    setDraftError("");
+    setLoading(true);
+
+    fetch(`/api/probe?id=${encodeURIComponent(event.id)}`, { signal: ctrl.signal })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.error) throw new Error(data.error);
+        setProbe(data.probe ?? null);
+      })
+      .catch((err) => {
+        if (err.name !== "AbortError") setError(err.message ?? "Copilot failed.");
+      })
+      .finally(() => {
+        if (!ctrl.signal.aborted) setLoading(false);
+      });
+
+    return () => ctrl.abort();
+  }, [event?.id]);
+
+  const draftReviewNote = useCallback(async () => {
+    if (!event) return;
+    setDraftLoading(true);
+    setDraftError("");
+    setDraftNote("");
+
+    try {
+      const res = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiKey, events: [event], mode: "review_note" }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setDraftNote(data.analysis ?? "");
+    } catch (err) {
+      setDraftError(err.message ?? "Draft note failed.");
+    } finally {
+      setDraftLoading(false);
+    }
+  }, [event, apiKey]);
+
+  if (loading) {
+    return (
+      <div className="copilot-panel">
+        <div className="copilot-head">
+          <div>
+            <div className="brief-label">Reviewer Copilot</div>
+            <p>Preparing source checks, uncertainty, and next review steps.</p>
+          </div>
+          <span className="copilot-badge">Building</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !probe?.reviewCopilot) {
+    return (
+      <div className="copilot-panel">
+        <div className="copilot-head">
+          <div>
+            <div className="brief-label">Reviewer Copilot</div>
+            <p>{error || "No copilot packet available for this event."}</p>
+          </div>
+          <span className="copilot-badge weak">Thin</span>
+        </div>
+      </div>
+    );
+  }
+
+  const copilot = probe.reviewCopilot;
+  const suggested = copilot.suggestedDecision;
+  const probeEvent = probe.selectedEvent ?? event;
+  const surfaceExplanation = eventSurfaceExplanation(probeEvent);
+  const uncertainty = eventUncertainty(probeEvent);
+
+  return (
+    <div className="copilot-panel">
+      <div className="copilot-head">
+        <div>
+          <div className="brief-label">Reviewer Copilot</div>
+          <p>{copilot.bottomLine}</p>
+        </div>
+        <span className={`copilot-badge ${suggested.decision}`}>
+          {suggested.label} · {suggested.confidence}%
+        </span>
+      </div>
+
+      <div className="copilot-decision">
+        <strong>{suggested.label}</strong>
+        <span>{suggested.rationale}</span>
+      </div>
+
+      <div className="copilot-meta-row">
+        <div>
+          <span>Surface</span>
+          <strong>{surfaceExplanation.label}</strong>
+          <small>{surfaceExplanation.score}/100 model priority</small>
+        </div>
+        <div>
+          <span>Uncertainty</span>
+          <strong className={`uncertainty-${uncertainty.level}`}>{uncertainty.level}</strong>
+          <small>{uncertainty.score}/100 row shakiness</small>
+        </div>
+        <div>
+          <span>Incident cluster</span>
+          <strong>{probeEvent.eventClusterRole ?? "representative"}</strong>
+          <small>{Number(probeEvent.eventClusterSize ?? 1).toLocaleString()} row(s)</small>
+        </div>
+      </div>
+
+      <div className="copilot-grid">
+        <div className="copilot-section">
+          <div className="brief-label">Why surfaced</div>
+          <ul className="why-list">
+            {copilot.whySurfaced.map((item) => <li key={item}>{item}</li>)}
+          </ul>
+        </div>
+
+        <div className="copilot-section">
+          <div className="brief-label">What to verify</div>
+          <ul className="why-list">
+            {copilot.whatToVerify.map((item) => <li key={item}>{item}</li>)}
+          </ul>
+        </div>
+      </div>
+
+      <div className="copilot-section">
+        <div className="brief-label">Uncertainty</div>
+        <ul className="warning-list">
+          {copilot.uncertainty.map((item) => <li key={item}>{item}</li>)}
+        </ul>
+      </div>
+
+      <div className="copilot-section">
+        <div className="brief-label">Watch next</div>
+        <ul className="why-list">
+          {copilot.watchNext.slice(0, 4).map((item) => <li key={item}>{item}</li>)}
+        </ul>
+      </div>
+
+      <div className="copilot-note-box">
+        <div className="copilot-note-head">
+          <div>
+            <div className="brief-label">Draft review note</div>
+            <p>LLM drafting is assistant text only. It is not evidence and cannot make a label source-checked.</p>
+          </div>
+          {aiReady && (
+            <button type="button" onClick={draftReviewNote} disabled={draftLoading}>
+              {draftLoading ? "Drafting..." : draftNote ? "Re-draft" : "Draft note"}
+            </button>
+          )}
+        </div>
+        {!aiReady && (
+          <p className="quiet-note">Add an Anthropic API key to draft a short note. The deterministic copilot still works without one.</p>
+        )}
+        {draftError && <div className="ai-error">{draftError}</div>}
+        {draftNote && <div className="ai-output copilot-draft">{draftNote}</div>}
+      </div>
+    </div>
+  );
+}
+
+function GlobalRiskQueue({ events, loading, selectedEvent, onFocusEvent, onOpenMap, filters, onFilter, apiKey, aiReady }) {
   const [decisionById, setDecisionById] = useState(readAssignmentDecisions);
+  const [queueMode, setQueueMode] = useState("priority");
+  const [reviewQueue, setReviewQueue] = useState(null);
+  const [queueMeta, setQueueMeta] = useState(null);
+  const [queueLoading, setQueueLoading] = useState(false);
+  const [queueError, setQueueError] = useState("");
 
   useEffect(() => {
     writeAssignmentDecisions(decisionById);
   }, [decisionById]);
 
-  const rankedEvents = useMemo(() => [...events]
-    .filter((event) => event.duplicateOf == null)
-    .map(assignmentPacket)
-    .sort((a, b) =>
-      b.priority - a.priority ||
-      b.ripple - a.ripple ||
-      Number(b.event.numMentions ?? 0) - Number(a.event.numMentions ?? 0)
-    )
-    .slice(0, 50), [events]);
+  useEffect(() => {
+    const ctrl = new AbortController();
+    setQueueLoading(true);
+    setQueueError("");
+
+    fetch(`/api/review-queue?days=${filters.days}&limit=80&mode=${queueMode}`, { signal: ctrl.signal })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.error) throw new Error(data.error);
+        setReviewQueue(Array.isArray(data.queue) ? data.queue : []);
+        setQueueMeta({ counts: data.counts, strategy: data.strategy, caveat: data.caveat });
+      })
+      .catch((err) => {
+        if (err.name !== "AbortError") {
+          setQueueError(err.message ?? "Failed to load active-learning queue.");
+          setReviewQueue(null);
+          setQueueMeta(null);
+        }
+      })
+      .finally(() => {
+        if (!ctrl.signal.aborted) setQueueLoading(false);
+      });
+
+    return () => ctrl.abort();
+  }, [filters.days, queueMode]);
+
+  const rankedEvents = useMemo(() => {
+    const packets = Array.isArray(reviewQueue)
+      ? reviewQueue.map((row) => assignmentPacket(row.event, row))
+      : [...events]
+          .filter((event) => event.duplicateOf == null && event.eventClusterRole !== "member")
+          .map(assignmentPacket)
+          .sort((a, b) =>
+            b.priority - a.priority ||
+            b.ripple - a.ripple ||
+            Number(b.event.numMentions ?? 0) - Number(a.event.numMentions ?? 0)
+          );
+
+    return packets
+      .filter((item) => {
+        if (filters.continent !== "All" && item.event.continent !== filters.continent) return false;
+        if (filters.category !== "All" && item.event.theme !== filters.category) return false;
+        return true;
+      })
+      .slice(0, 50);
+  }, [events, filters.continent, filters.category, reviewQueue]);
 
   const selected = selectedEvent
     ? rankedEvents.find((item) => item.event.id === selectedEvent.id) ?? rankedEvents[0]
@@ -1431,6 +1759,8 @@ function GlobalRiskQueue({ events, loading, selectedEvent, onFocusEvent, onOpenM
         recommendation: selected.recommendation,
         recommendationLabel: RECOMMENDATION_META[selected.recommendation].label,
         priority: selected.priority,
+        queueScore: selected.queueScore,
+        activeLearningReasons: selected.activeLearning?.reasons ?? [],
         evidenceGrade: selected.evidenceGrade,
         eventSummary: {
           title: eventTitle(event),
@@ -1440,6 +1770,8 @@ function GlobalRiskQueue({ events, loading, selectedEvent, onFocusEvent, onOpenM
           continent: event.continent,
           theme: event.theme,
           sourceUrl: event.sourceUrl,
+          eventClusterId: event.eventClusterId,
+          eventClusterRole: event.eventClusterRole,
         },
       },
     }));
@@ -1467,17 +1799,31 @@ function GlobalRiskQueue({ events, loading, selectedEvent, onFocusEvent, onOpenM
       <QueueFilterBar
         filters={filters}
         onFilter={onFilter}
-        loading={loading}
+        loading={loading || queueLoading}
         resultCount={rankedEvents.length}
         decisionCount={decisionCount}
         onExport={exportDecisions}
+        queueMode={queueMode}
+        onQueueMode={setQueueMode}
       />
+
+      {(queueMeta || queueError) && (
+        <div className={`queue-strategy-strip${queueError ? " error" : ""}`}>
+          {queueError ? queueError : (
+            <>
+              <strong>{QUEUE_MODES.find((mode) => mode.value === queueMode)?.label ?? "Priority"}</strong>
+              <span>{queueMeta.strategy?.ranking}</span>
+              <em>{queueMeta.counts?.sourceCheckedHumanLabels ?? 0} source-checked human labels protected</em>
+            </>
+          )}
+        </div>
+      )}
 
       <div className="queue-grid">
         <div className="queue-list-panel">
           <div className="risk-section-head">
-            <span>Investigation priority</span>
-            <span>{loading ? "loading" : `${rankedEvents.length} signals`}</span>
+            <span>Active-learning review queue</span>
+            <span>{loading || queueLoading ? "loading" : `${rankedEvents.length} signals`}</span>
           </div>
           <div className="queue-list">
             {rankedEvents.length === 0 && (
@@ -1494,18 +1840,19 @@ function GlobalRiskQueue({ events, loading, selectedEvent, onFocusEvent, onOpenM
                   className={"queue-item" + (selected?.event.id === item.event.id ? " selected" : "")}
                   onClick={() => onFocusEvent(item.event)}
                 >
-                  <span className="queue-rank">#{index + 1}</span>
+                  <span className="queue-rank">#{item.rank ?? index + 1}</span>
                   <span className="queue-main">
                     <strong>{eventTitle(item.event)}</strong>
                     <em>{item.event.location || item.event.country} · {item.event.date}</em>
+                    <em>{item.activeLearning?.reasons?.[0] ?? "Active-learning candidate"}</em>
                     {rowDecision && <em>Local decision: {rowDecision.decisionLabel}</em>}
                   </span>
                   <span className={`recommendation-pill ${item.recommendation}`}>
                     {RECOMMENDATION_META[item.recommendation].label}
                   </span>
                   <span className="queue-scores">
-                    <b>{item.priority}</b>
-                    <small>{item.evidenceGrade} evidence</small>
+                    <b>{item.queueScore}</b>
+                    <small>{item.uncertainty.level} uncertainty</small>
                   </span>
                 </button>
               );
@@ -1533,6 +1880,20 @@ function GlobalRiskQueue({ events, loading, selectedEvent, onFocusEvent, onOpenM
                 {RECOMMENDATION_META[selected.recommendation].description} This recommendation is a ranking aid, not verified truth.
               </p>
 
+              <div className="active-learning-box">
+                <div className="brief-label">Active learning</div>
+                <strong>{selected.queueScore}/100 review value</strong>
+                <p>{selected.activeLearning?.reasons?.[0] ?? "This row is useful for human source-checking."}</p>
+                <div className="component-row">
+                  <span>Priority {selected.activeLearning?.components?.priority ?? selected.priority}</span>
+                  <span>Uncertainty {selected.activeLearning?.components?.uncertainty ?? selected.uncertainty.score}</span>
+                  <span>Threshold {selected.activeLearning?.components?.threshold ?? 0}</span>
+                  <span>Coverage {selected.activeLearning?.components?.coverage ?? 0}</span>
+                </div>
+              </div>
+
+              <ReviewerCopilotPanel event={selected.event} apiKey={apiKey} aiReady={aiReady} />
+
               <div className="brief-scores">
                 <ScoreBar label="Direct danger" value={selected.danger} tone="danger" />
                 <ScoreBar label="Ripple potential" value={selected.ripple} tone="ripple" />
@@ -1544,12 +1905,20 @@ function GlobalRiskQueue({ events, loading, selectedEvent, onFocusEvent, onOpenM
                   <strong className={`evidence-grade ${selected.evidenceGrade}`}>{selected.evidenceGrade}</strong>
                 </div>
                 <div>
+                  <span>Uncertainty</span>
+                  <strong className={`uncertainty-${selected.uncertainty.level}`}>{selected.uncertainty.level} · {selected.uncertainty.score}</strong>
+                </div>
+                <div>
                   <span>Source</span>
                   <strong>{sourceHost(selected.event.sourceUrl) || "none"}</strong>
                 </div>
                 <div>
-                  <span>Cluster rows</span>
+                  <span>Source rows</span>
                   <strong>{Number(selected.event.surfaceClusterSize ?? 1).toLocaleString()}</strong>
+                </div>
+                <div>
+                  <span>Incident cluster</span>
+                  <strong>{Number(selected.event.eventClusterSize ?? 1).toLocaleString()} · {selected.event.eventClusterRole ?? "representative"}</strong>
                 </div>
                 <div>
                   <span>Model probability</span>
@@ -1565,21 +1934,34 @@ function GlobalRiskQueue({ events, loading, selectedEvent, onFocusEvent, onOpenM
               </div>
 
               <div className="brief-section">
-                <div className="brief-label">Reason codes</div>
+                <div className="brief-label">Why surfaced</div>
+                <p className="quiet-note">{selected.surfaceExplanation.summary}</p>
                 <ul className="why-list">
                   {selected.reasonCodes.map((reason) => <li key={reason}>{reason}</li>)}
                 </ul>
               </div>
 
               <div className="brief-section">
-                <div className="brief-label">Source and row warnings</div>
-                {selected.warnings.length > 0 ? (
+                <div className="brief-label">Uncertainty warnings</div>
+                {selected.uncertainty.warnings.length > 0 ? (
                   <ul className="warning-list">
-                    {selected.warnings.map((warning) => <li key={warning}>{warning}</li>)}
+                    {selected.uncertainty.warnings.map((warning) => <li key={warning}>{warning}</li>)}
                   </ul>
                 ) : (
                   <p className="quiet-note">No major row caveats from the current metadata. The source still needs human checking before becoming ground truth.</p>
                 )}
+                {!!selected.uncertainty.confidenceDrivers?.length && (
+                  <div className="confidence-driver-row">
+                    {selected.uncertainty.confidenceDrivers.slice(0, 3).map((driver) => <span key={driver}>{driver}</span>)}
+                  </div>
+                )}
+              </div>
+
+              <div className="brief-section">
+                <div className="brief-label">Incident cluster</div>
+                <ul className="why-list">
+                  {(selected.event.eventClusterReasons ?? ["No likely same-incident rows found."]).map((reason) => <li key={reason}>{reason}</li>)}
+                </ul>
               </div>
 
               <div className="brief-facts">
@@ -1780,6 +2162,8 @@ function App() {
             onOpenMap={() => handleViewChange("events")}
             filters={filters}
             onFilter={handleFilter}
+            apiKey={apiKey}
+            aiReady={aiReady}
           />
         ) : view === "events" ? (
           <>

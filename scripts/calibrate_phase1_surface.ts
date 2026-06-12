@@ -3,6 +3,26 @@ import { dirname } from "path";
 
 type Category = "doom" | "bloom";
 type Severity = "low" | "medium" | "high" | "critical";
+type SurfaceBand = "lead" | "watch" | "background";
+type EventClusterRole = "representative" | "member";
+type UncertaintyLevel = "low" | "medium" | "high";
+
+interface SurfaceExplanation {
+  score: number;
+  band: SurfaceBand;
+  label: string;
+  summary: string;
+  boosts: string[];
+  penalties: string[];
+  caveats: string[];
+}
+
+interface EventUncertainty {
+  level: UncertaintyLevel;
+  score: number;
+  warnings: string[];
+  confidenceDrivers: string[];
+}
 
 interface GdeltEvent {
   id: string;
@@ -34,6 +54,14 @@ interface GdeltEvent {
   duplicateOf?: string | null;
   surfaceModelProbability?: number;
   surfaceRadius?: number;
+  surfaceExplanation?: SurfaceExplanation;
+  uncertainty?: EventUncertainty;
+  eventClusterId?: string;
+  eventClusterSize?: number;
+  eventClusterRole?: EventClusterRole;
+  eventClusterReasons?: string[];
+  activeLearningScore?: number;
+  activeLearningReasons?: string[];
 }
 
 interface Phase1Label {
@@ -61,12 +89,28 @@ interface ScoredEvent {
   modelProbability: number;
   score: number;
   radius: number;
-  band: "lead" | "watch" | "background";
+  band: SurfaceBand;
   reasons: string[];
+  boosts: string[];
   penalties: string[];
+  caveats: string[];
   clusterKey: string;
   clusterSize: number;
   duplicateOf: string | null;
+}
+
+interface EventClusterAssignment {
+  clusterId: string;
+  size: number;
+  role: EventClusterRole;
+  reasons: string[];
+}
+
+interface CoverageStats {
+  sourceCheckedEventIds: Set<string>;
+  continentCounts: Map<string, number>;
+  themeCounts: Map<string, number>;
+  domainCounts: Map<string, number>;
 }
 
 const EVENTS_PATH = "public/data/events.json";
@@ -398,6 +442,117 @@ function isGenericEventTitle(event: GdeltEvent): boolean {
   return words.length === 1 && ["COMMANDER", "CITIZEN", "AUSTRALIAN", "WEBSITE", "BRITISH"].includes(words[0]);
 }
 
+function bandLabel(band: SurfaceBand): string {
+  if (band === "lead") return "Likely high-importance lead";
+  if (band === "watch") return "Worth monitoring";
+  return "Background or weak signal";
+}
+
+function caveatsForEvent(event: GdeltEvent, penalties: string[], duplicateOf: string | null): string[] {
+  const caveats: string[] = [];
+  const reasonText = penalties.join(" ").toLowerCase();
+
+  if (!event.sourceUrl) caveats.push("No source URL attached.");
+  if (duplicateOf) caveats.push(`Duplicate source row; representative is ${duplicateOf}.`);
+  if ((event.numMentions ?? 0) <= 1) caveats.push("Single-mention row; corroboration is weak.");
+  if (event.actor1 === "Unknown" || event.actor2 === "Unknown") caveats.push("Actor extraction is missing or generic.");
+  if (reasonText.includes("source-mismatch") || reasonText.includes("background")) caveats.push("Possible background/source-mismatch article.");
+  if (reasonText.includes("local crime")) caveats.push("May be local crime rather than strategic geopolitical signal.");
+  if (reasonText.includes("entertainment") || reasonText.includes("history")) caveats.push("May be entertainment or historical extraction noise.");
+  if (reasonText.includes("opinion")) caveats.push("Opinion/background source; do not treat interpretation as fact.");
+
+  return [...new Set(caveats)].slice(0, 6);
+}
+
+function buildSurfaceExplanation(row: ScoredEvent): SurfaceExplanation {
+  const summaryParts = [
+    `${bandLabel(row.band)} at ${row.score}/100`,
+    row.boosts.length ? `raised by ${row.boosts.slice(0, 2).join(" and ")}` : "ranked by model and row metadata",
+    row.penalties.length ? `tempered by ${row.penalties.slice(0, 2).join(" and ")}` : "with no major rule penalty",
+  ];
+
+  return {
+    score: row.score,
+    band: row.band,
+    label: bandLabel(row.band),
+    summary: summaryParts.join("; "),
+    boosts: row.boosts.slice(0, 6),
+    penalties: row.penalties.slice(0, 6),
+    caveats: row.caveats.slice(0, 6),
+  };
+}
+
+function nearestReviewThreshold(score: number): number {
+  return Math.min(Math.abs(score - 72), Math.abs(score - 52));
+}
+
+function buildEventUncertainty(row: ScoredEvent, cluster: EventClusterAssignment): EventUncertainty {
+  let score = 18;
+  const warnings: string[] = [];
+  const confidenceDrivers: string[] = [];
+  const event = row.event;
+  const thresholdDistance = nearestReviewThreshold(row.score);
+
+  if (event.sourceUrl) {
+    confidenceDrivers.push("Source URL is present.");
+  } else {
+    score += 24;
+    warnings.push("No source URL attached.");
+  }
+
+  if ((event.numMentions ?? 0) <= 1) {
+    score += 18;
+    warnings.push("Single-mention signal; find another source before trusting it.");
+  } else if ((event.numMentions ?? 0) >= 20) {
+    score -= 6;
+    confidenceDrivers.push(`${event.numMentions} media mentions.`);
+  }
+
+  if (row.duplicateOf) {
+    score += 20;
+    warnings.push(`Duplicate source row; review representative ${row.duplicateOf}.`);
+  }
+
+  if (cluster.role === "member") {
+    score += 12;
+    warnings.push(`Likely same incident cluster member; review cluster representative first.`);
+  } else if (cluster.size > 1) {
+    score -= 5;
+    confidenceDrivers.push(`${cluster.size} likely incident-cluster rows.`);
+  }
+
+  if (event.actor1 === "Unknown" || event.actor2 === "Unknown" || isGenericEventTitle(event)) {
+    score += 13;
+    warnings.push("Actor or event title is generic, so row parsing may be weak.");
+  }
+
+  if (row.penalties.some((penalty) => /source-mismatch|background|local crime|entertainment|history|opinion/i.test(penalty))) {
+    score += 17;
+    warnings.push("Surfacing policy found source-quality or row-quality caveats.");
+  }
+
+  if (thresholdDistance <= 5) {
+    score += 14;
+    warnings.push("Priority is close to an Assign/Watch/Dismiss threshold.");
+  } else {
+    confidenceDrivers.push("Priority is not close to a review threshold.");
+  }
+
+  if (row.boosts.some((boost) => /strategic|high-risk|diplomacy|humanitarian/i.test(boost))) {
+    confidenceDrivers.push("Strategic or public-interest boost present.");
+  }
+
+  score = Math.round(clamp(score, 0, 100));
+  const level: UncertaintyLevel = score >= 66 ? "high" : score >= 38 ? "medium" : "low";
+
+  return {
+    level,
+    score,
+    warnings: [...new Set(warnings)].slice(0, 6),
+    confidenceDrivers: [...new Set(confidenceDrivers)].slice(0, 6),
+  };
+}
+
 function scoreSurfaceEvent(event: GdeltEvent, events: GdeltEvent[], model: ModelArtifact | null, clusters: Map<string, GdeltEvent[]>): ScoredEvent {
   const reasons: string[] = [];
   const penalties: string[] = [];
@@ -489,6 +644,7 @@ function scoreSurfaceEvent(event: GdeltEvent, events: GdeltEvent[], model: Model
   if (reasons.length === 0) reasons.push("GDELT/model signal only");
   const band = score >= 72 ? "lead" : score >= 52 ? "watch" : "background";
   const radius = round(3 + (score / 100) * 8, 1);
+  const scoredDuplicateOf = duplicateOf;
 
   return {
     event,
@@ -497,11 +653,193 @@ function scoreSurfaceEvent(event: GdeltEvent, events: GdeltEvent[], model: Model
     radius,
     band,
     reasons: [...reasons, ...penalties.map((penalty) => `penalty: ${penalty}`)].slice(0, 5),
+    boosts: reasons.slice(0, 6),
     penalties,
+    caveats: caveatsForEvent(event, penalties, scoredDuplicateOf),
     clusterKey,
     clusterSize: cluster.length,
-    duplicateOf,
+    duplicateOf: scoredDuplicateOf,
   };
+}
+
+function incidentPairReasons(a: GdeltEvent, b: GdeltEvent): string[] {
+  const reasons: string[] = [];
+  const aSource = normalizedSourceKey(a.sourceUrl);
+  const bSource = normalizedSourceKey(b.sourceUrl);
+  const aDay = dayNumber(a.date);
+  const bDay = dayNumber(b.date);
+  const dayGap = Number.isFinite(aDay) && Number.isFinite(bDay) ? Math.abs(aDay - bDay) : Number.POSITIVE_INFINITY;
+  const sameCountry = Boolean(a.country && b.country && a.country === b.country);
+  const sameTheme = Boolean(a.theme && b.theme && a.theme === b.theme);
+  const sameQuad = a.quadClass !== null && a.quadClass === b.quadClass;
+  const sharedActors = [...actorTokens(a)].filter((token) => actorTokens(b).has(token));
+  const km = distanceKm(a, b);
+  const nearby = km !== null && km <= 120;
+
+  if (aSource && bSource && aSource === bSource) reasons.push("same source article");
+  if (dayGap <= 1) reasons.push("same or adjacent day");
+  else if (dayGap <= 2) reasons.push("within two days");
+  if (sameCountry) reasons.push(`same country: ${a.country}`);
+  if (sameTheme) reasons.push(`same theme: ${a.theme}`);
+  if (sameQuad) reasons.push(`same event class: ${a.quadLabel}`);
+  if (sharedActors.length) reasons.push(`shared actor: ${sharedActors.slice(0, 3).join(", ")}`);
+  if (nearby) reasons.push(`nearby location: ${Math.round(km ?? 0)} km`);
+
+  return reasons;
+}
+
+function compareScoredRepresentative(a: ScoredEvent, b: ScoredEvent): number {
+  const scoreDiff = b.score - a.score;
+  if (Math.abs(scoreDiff) > 0.001) return scoreDiff;
+  const mentionDiff = Number(b.event.numMentions ?? 0) - Number(a.event.numMentions ?? 0);
+  if (mentionDiff !== 0) return mentionDiff;
+  return String(a.event.id).localeCompare(String(b.event.id));
+}
+
+function actorSignature(event: GdeltEvent): string {
+  const tokens = [...actorTokens(event)].sort();
+  if (tokens.length > 0) return tokens.slice(0, 3).join("+");
+  const domain = hostFromUrl(event.sourceUrl);
+  return domain ? `domain:${domain}` : "no-actor";
+}
+
+function locationBucket(event: GdeltEvent): string {
+  if (Number.isFinite(event.lat) && Number.isFinite(event.lon)) {
+    return `${Math.round(event.lat * 4) / 4},${Math.round(event.lon * 4) / 4}`;
+  }
+  return (event.location || event.country || "unknown").toLowerCase().replace(/\s+/g, "-").slice(0, 48);
+}
+
+function incidentClusterKey(row: ScoredEvent): string {
+  if (row.clusterSize > 1 && row.clusterKey) return `source:${row.clusterKey}`;
+  const event = row.event;
+  return [
+    "prox",
+    event.date,
+    event.country || "unknown-country",
+    event.theme ?? "unknown-theme",
+    event.quadClass ?? "unknown-quad",
+    locationBucket(event),
+    actorSignature(event),
+  ].join(":");
+}
+
+function clusterMemberReasons(member: ScoredEvent, representative: ScoredEvent, group: ScoredEvent[]): string[] {
+  if (member.event.id === representative.event.id) {
+    const peerReasons = group
+      .filter((candidate) => candidate.event.id !== representative.event.id)
+      .flatMap((candidate) => incidentPairReasons(representative.event, candidate.event))
+      .slice(0, 4);
+    return [...new Set([
+      "Cluster representative selected by surface score and mentions.",
+      group.length > 1 ? `${group.length} likely same-incident rows.` : "No likely same-incident rows found.",
+      ...peerReasons,
+    ])].slice(0, 6);
+  }
+
+  const direct = incidentPairReasons(member.event, representative.event);
+  if (direct.length) return [...new Set(direct)].slice(0, 6);
+
+  const strongestPeer = group
+    .filter((candidate) => candidate.event.id !== member.event.id)
+    .map((candidate) => incidentPairReasons(member.event, candidate.event))
+    .sort((a, b) => b.length - a.length)[0] ?? [];
+  return strongestPeer.length
+    ? [...new Set(strongestPeer)].slice(0, 6)
+    : ["Linked through actor/theme/location/date cluster chain."];
+}
+
+function buildEventClusterAssignments(scored: ScoredEvent[]): Map<string, EventClusterAssignment> {
+  const groups = new Map<string, ScoredEvent[]>();
+  for (const row of scored) {
+    const key = incidentClusterKey(row);
+    const group = groups.get(key) ?? [];
+    group.push(row);
+    groups.set(key, group);
+  }
+
+  const assignments = new Map<string, EventClusterAssignment>();
+  for (const group of groups.values()) {
+    const sorted = [...group].sort(compareScoredRepresentative);
+    const representative = sorted[0];
+    const clusterId = `incident-${representative.event.id}`;
+
+    for (const member of group) {
+      assignments.set(member.event.id, {
+        clusterId,
+        size: group.length,
+        role: member.event.id === representative.event.id ? "representative" : "member",
+        reasons: clusterMemberReasons(member, representative, group),
+      });
+    }
+  }
+
+  return assignments;
+}
+
+function buildCoverageStats(labels: Phase1Label[], eventsById: Map<string, GdeltEvent>): CoverageStats {
+  const stats: CoverageStats = {
+    sourceCheckedEventIds: new Set<string>(),
+    continentCounts: new Map<string, number>(),
+    themeCounts: new Map<string, number>(),
+    domainCounts: new Map<string, number>(),
+  };
+
+  for (const label of labels) {
+    if (!isSourceCheckedHumanLabel(label)) continue;
+    const event = eventsById.get(label.eventId);
+    if (!event) continue;
+    stats.sourceCheckedEventIds.add(label.eventId);
+    stats.continentCounts.set(event.continent, (stats.continentCounts.get(event.continent) ?? 0) + 1);
+    if (event.theme) stats.themeCounts.set(event.theme, (stats.themeCounts.get(event.theme) ?? 0) + 1);
+    const domain = hostFromUrl(event.sourceUrl);
+    if (domain) stats.domainCounts.set(domain, (stats.domainCounts.get(domain) ?? 0) + 1);
+  }
+
+  return stats;
+}
+
+function coverageGapScore(event: GdeltEvent, stats: CoverageStats): number {
+  const continentCount = stats.continentCounts.get(event.continent) ?? 0;
+  const themeCount = event.theme ? stats.themeCounts.get(event.theme) ?? 0 : 0;
+  const domain = hostFromUrl(event.sourceUrl);
+  const domainCount = domain ? stats.domainCounts.get(domain) ?? 0 : 0;
+
+  return round(
+    clamp(10 - continentCount * 1.6, 0, 10) +
+    clamp(8 - themeCount * 1.5, 0, 8) +
+    (domain && domainCount === 0 ? 5 : 0),
+    2
+  );
+}
+
+function buildActiveLearning(event: GdeltEvent, label: Phase1Label | undefined, stats: CoverageStats): { score: number; reasons: string[] } {
+  if (label && isSourceCheckedHumanLabel(label)) {
+    return { score: 0, reasons: ["Already source-checked by a human; do not ask the model to relabel it."] };
+  }
+
+  const priority = Number(event.surfaceScore ?? 0);
+  const uncertaintyScore = event.uncertainty?.score ?? 50;
+  const thresholdBonus = clamp(16 - nearestReviewThreshold(priority) * 1.8, 0, 16);
+  const coverage = coverageGapScore(event, stats);
+  const thinImportant = priority >= 52 && event.uncertainty?.level === "high" ? 14 : 0;
+  const clusterPenalty = event.duplicateOf || event.eventClusterRole === "member" ? 90 : 0;
+  const score = round(clamp(
+    priority * 0.42 + uncertaintyScore * 0.24 + thresholdBonus + coverage + thinImportant - clusterPenalty,
+    0,
+    100
+  ), 2);
+
+  const reasons = [
+    priority >= 72 ? "High-priority surfaced lead." : priority >= 52 ? "Near the Watch/Assign decision band." : "Background row may still teach the filter.",
+    thresholdBonus > 0 ? "Close to a review threshold, so a human label is informative." : null,
+    uncertaintyScore >= 66 ? "High uncertainty needs source checking." : uncertaintyScore >= 38 ? "Medium uncertainty can improve calibration." : null,
+    thinImportant > 0 ? "Important-looking row with shaky evidence." : null,
+    coverage > 10 ? "Under-reviewed region/theme/source coverage gap." : coverage > 0 ? "Adds some coverage diversity." : null,
+    clusterPenalty > 0 ? "Cluster member or duplicate; review the representative instead." : null,
+  ].filter((reason): reason is string => Boolean(reason));
+
+  return { score, reasons: [...new Set(reasons)].slice(0, 6) };
 }
 
 function baselineScore(event: GdeltEvent): number {
@@ -608,6 +946,8 @@ async function main() {
   const events: GdeltEvent[] = Array.isArray(parsedEvents.events) ? parsedEvents.events : [];
   const labels = readJsonl<Phase1Label>(await readFile(LABEL_PATH, "utf8"));
   const labelById = new Map(labels.map((label) => [label.eventId, label]));
+  const eventsById = new Map(events.map((event) => [event.id, event]));
+  const coverageStats = buildCoverageStats(labels, eventsById);
   const model: ModelArtifact | null = JSON.parse(await readFile(MODEL_PATH, "utf8"));
 
   const clusters = new Map<string, GdeltEvent[]>();
@@ -620,6 +960,7 @@ async function main() {
 
   const scored = events.map((event) => scoreSurfaceEvent(event, events, model, clusters));
   scored.sort((a, b) => b.score - a.score || Number(b.event.numMentions ?? 0) - Number(a.event.numMentions ?? 0));
+  const incidentClusters = buildEventClusterAssignments(scored);
 
   const evalRows = scored
     .map((row) => ({ scored: row, label: labelById.get(row.event.id) }))
@@ -643,18 +984,41 @@ async function main() {
     predicted: row.scored.modelProbability >= modelThreshold,
   }));
 
-  const rankedEvents = scored.map((row, index) => ({
-    ...row.event,
-    surfaceScore: row.score,
-    surfaceRank: index + 1,
-    surfaceBand: row.band,
-    surfaceReasons: row.reasons,
-    surfaceClusterKey: row.clusterKey,
-    surfaceClusterSize: row.clusterSize,
-    duplicateOf: row.duplicateOf,
-    surfaceModelProbability: round(row.modelProbability),
-    surfaceRadius: row.radius,
-  }));
+  const rankedEvents = scored.map((row, index) => {
+    const cluster = incidentClusters.get(row.event.id) ?? {
+      clusterId: `incident-${row.event.id}`,
+      size: 1,
+      role: "representative" as const,
+      reasons: ["No likely same-incident rows found."],
+    };
+    const surfaceExplanation = buildSurfaceExplanation(row);
+    const uncertainty = buildEventUncertainty(row, cluster);
+    const enrichedEvent: GdeltEvent = {
+      ...row.event,
+      surfaceScore: row.score,
+      surfaceRank: index + 1,
+      surfaceBand: row.band,
+      surfaceReasons: row.reasons,
+      surfaceClusterKey: row.clusterKey,
+      surfaceClusterSize: row.clusterSize,
+      duplicateOf: row.duplicateOf,
+      surfaceModelProbability: round(row.modelProbability),
+      surfaceRadius: row.radius,
+      surfaceExplanation,
+      uncertainty,
+      eventClusterId: cluster.clusterId,
+      eventClusterSize: cluster.size,
+      eventClusterRole: cluster.role,
+      eventClusterReasons: cluster.reasons,
+    };
+    const activeLearning = buildActiveLearning(enrichedEvent, labelById.get(row.event.id), coverageStats);
+
+    return {
+      ...enrichedEvent,
+      activeLearningScore: activeLearning.score,
+      activeLearningReasons: activeLearning.reasons,
+    };
+  });
 
   const metrics = {
     labels: {
@@ -674,6 +1038,11 @@ async function main() {
       top10: precisionAtK(evalRows.map((row) => ({ actual: row.label.labels.important, score: row.scored.score })), 10),
       top25: precisionAtK(evalRows.map((row) => ({ actual: row.label.labels.important, score: row.scored.score })), 25),
       top50: precisionAtK(evalRows.map((row) => ({ actual: row.label.labels.important, score: row.scored.score })), 50),
+    },
+    clusters: {
+      sourceClusters: [...clusters.values()].filter((cluster) => cluster.length > 1).length,
+      incidentClusters: new Set(rankedEvents.map((event) => event.eventClusterId)).size,
+      incidentClusterMembers: rankedEvents.filter((event) => event.eventClusterRole === "member").length,
     },
   };
 
@@ -736,6 +1105,8 @@ async function main() {
       band: event.surfaceBand,
       sourceDomain: hostFromUrl(event.sourceUrl),
       reasons: event.surfaceReasons,
+      uncertainty: event.uncertainty,
+      eventClusterId: event.eventClusterId,
       sourceUrl: event.sourceUrl,
     })),
   };

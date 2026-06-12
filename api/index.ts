@@ -8,6 +8,28 @@ export const config = { maxDuration: 30 };
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+type SurfaceBand = "lead" | "watch" | "background";
+type EventClusterRole = "representative" | "member";
+type UncertaintyLevel = "low" | "medium" | "high";
+type ReviewQueueMode = "priority" | "uncertain" | "coverage";
+
+interface SurfaceExplanation {
+  score: number;
+  band: SurfaceBand;
+  label: string;
+  summary: string;
+  boosts: string[];
+  penalties: string[];
+  caveats: string[];
+}
+
+interface EventUncertainty {
+  level: UncertaintyLevel;
+  score: number;
+  warnings: string[];
+  confidenceDrivers: string[];
+}
+
 interface GdeltEvent {
   id: string;
   lat: number;
@@ -31,6 +53,23 @@ interface GdeltEvent {
   markerRadius: number;
   severity: "low" | "medium" | "high" | "critical";
   continent: string;
+  surfaceScore?: number;
+  surfaceRank?: number;
+  surfaceBand?: string;
+  surfaceReasons?: string[];
+  surfaceClusterKey?: string;
+  surfaceClusterSize?: number;
+  surfaceModelProbability?: number;
+  surfaceRadius?: number;
+  duplicateOf?: string | null;
+  surfaceExplanation?: SurfaceExplanation;
+  uncertainty?: EventUncertainty;
+  eventClusterId?: string;
+  eventClusterSize?: number;
+  eventClusterRole?: EventClusterRole;
+  eventClusterReasons?: string[];
+  activeLearningScore?: number;
+  activeLearningReasons?: string[];
 }
 
 interface RelatedSignal {
@@ -93,6 +132,20 @@ interface ModelPrediction {
   limitations: string[];
 }
 
+interface ReviewCopilot {
+  bottomLine: string;
+  whySurfaced: string[];
+  whatToVerify: string[];
+  uncertainty: string[];
+  suggestedDecision: {
+    decision: "assign" | "watch" | "dismiss";
+    label: "Assign" | "Watch" | "Dismiss";
+    confidence: number;
+    rationale: string;
+  };
+  watchNext: string[];
+}
+
 interface ProbePack {
   selectedEvent: GdeltEvent;
   datasetUpdated?: string;
@@ -104,6 +157,7 @@ interface ProbePack {
   hypotheses: HypothesisSeed[];
   actorGame: ActorGame[];
   watchlist: string[];
+  reviewCopilot: ReviewCopilot;
   evidenceGrade: {
     label: "thin" | "partial" | "strong";
     confidence: number;
@@ -144,6 +198,36 @@ interface DeterministicRiskModel {
     actorMemory: number;
     quietMax: number;
     quietDivisor: number;
+  };
+}
+
+interface Phase1Label {
+  eventId: string;
+  labelSource?: string;
+  humanReviewed?: boolean;
+  reviewContext?: Record<string, unknown>;
+  labels?: {
+    important?: boolean;
+    categoryCorrect?: boolean;
+    severityCorrect?: boolean;
+    summaryQuality?: number | null;
+  };
+}
+
+interface ReviewQueueRow {
+  event: GdeltEvent;
+  rank: number;
+  queueScore: number;
+  mode: ReviewQueueMode;
+  activeLearning: {
+    score: number;
+    reasons: string[];
+    components: {
+      priority: number;
+      uncertainty: number;
+      threshold: number;
+      coverage: number;
+    };
   };
 }
 
@@ -237,6 +321,8 @@ const SOURCE_FETCH_TIMEOUT = 5_000;
 const SOURCE_TEXT_LIMIT = 3_500;
 const RELATED_SIGNAL_LIMIT = 12;
 const DAY_MS = 86_400_000;
+const REVIEW_ASSIGN_THRESHOLD = 72;
+const REVIEW_WATCH_THRESHOLD = 52;
 
 // ── In-memory cache ───────────────────────────────────────────────────────────
 
@@ -547,6 +633,280 @@ function hostFromUrl(url: string | undefined): string {
   } catch {
     return "";
   }
+}
+
+function readJsonl<T>(text: string): T[] {
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as T);
+}
+
+async function loadPhase1Labels(): Promise<Phase1Label[]> {
+  try {
+    const path = await resolveDataPath("data/eval/phase1_labels.jsonl");
+    return readJsonl<Phase1Label>(await fs.readFile(path, "utf8"));
+  } catch {
+    return [];
+  }
+}
+
+function isSourceCheckedHumanLabel(label: Phase1Label | undefined): boolean {
+  return label?.labelSource === "human" &&
+    label.humanReviewed === true &&
+    label.reviewContext?.sourceChecked === true;
+}
+
+function surfaceBandForScore(score: number): SurfaceBand {
+  if (score >= REVIEW_ASSIGN_THRESHOLD) return "lead";
+  if (score >= REVIEW_WATCH_THRESHOLD) return "watch";
+  return "background";
+}
+
+function surfaceBandLabel(band: SurfaceBand): string {
+  if (band === "lead") return "Likely high-importance lead";
+  if (band === "watch") return "Worth monitoring";
+  return "Background or weak signal";
+}
+
+function normalizedSurfaceBand(event: GdeltEvent): SurfaceBand {
+  if (event.surfaceBand === "lead" || event.surfaceBand === "watch" || event.surfaceBand === "background") {
+    return event.surfaceBand;
+  }
+  return surfaceBandForScore(surfaceSortScore(event));
+}
+
+function cleanSurfaceReason(reason: string): string {
+  return reason.startsWith("penalty: ") ? reason.slice("penalty: ".length) : reason;
+}
+
+function fallbackSurfaceExplanation(event: GdeltEvent): SurfaceExplanation {
+  const score = Math.round(clamp(surfaceSortScore(event), 0, 100));
+  const band = normalizedSurfaceBand(event);
+  const boosts = (event.surfaceReasons ?? [])
+    .filter((reason) => !reason.startsWith("penalty: "))
+    .map(cleanSurfaceReason);
+  const penalties = (event.surfaceReasons ?? [])
+    .filter((reason) => reason.startsWith("penalty: "))
+    .map(cleanSurfaceReason);
+  const caveats = [
+    !event.sourceUrl ? "No source URL attached." : null,
+    event.duplicateOf ? `Duplicate source row; representative is ${event.duplicateOf}.` : null,
+    Number(event.numMentions ?? 0) <= 1 ? "Single-mention row; corroboration is weak." : null,
+    event.actor1 === "Unknown" || event.actor2 === "Unknown" ? "Actor extraction is missing or generic." : null,
+    ...penalties
+      .filter((penalty) => /source-mismatch|background|local crime|entertainment|history|opinion/i.test(penalty))
+      .map((penalty) => `Caveat: ${penalty}.`),
+  ].filter((item): item is string => Boolean(item));
+
+  return {
+    score,
+    band,
+    label: surfaceBandLabel(band),
+    summary: `${surfaceBandLabel(band)} at ${score}/100; ${boosts[0] ?? "ranked by model and row metadata"}.`,
+    boosts: boosts.slice(0, 6),
+    penalties: penalties.slice(0, 6),
+    caveats: [...new Set(caveats)].slice(0, 6),
+  };
+}
+
+function fallbackEventUncertainty(event: GdeltEvent): EventUncertainty {
+  let score = 18;
+  const warnings: string[] = [];
+  const confidenceDrivers: string[] = [];
+  const priority = surfaceSortScore(event);
+  const thresholdDistance = Math.min(Math.abs(priority - REVIEW_ASSIGN_THRESHOLD), Math.abs(priority - REVIEW_WATCH_THRESHOLD));
+  const reasons = (event.surfaceReasons ?? []).join(" ").toLowerCase();
+
+  if (event.sourceUrl) confidenceDrivers.push("Source URL is present.");
+  else {
+    score += 24;
+    warnings.push("No source URL attached.");
+  }
+
+  if (Number(event.numMentions ?? 0) <= 1) {
+    score += 18;
+    warnings.push("Single-mention signal; find another source before trusting it.");
+  } else if (Number(event.numMentions ?? 0) >= 20) {
+    score -= 6;
+    confidenceDrivers.push(`${event.numMentions} media mentions.`);
+  }
+
+  if (event.duplicateOf) {
+    score += 20;
+    warnings.push(`Duplicate source row; review representative ${event.duplicateOf}.`);
+  }
+  if (event.eventClusterRole === "member") {
+    score += 12;
+    warnings.push("Likely same-incident cluster member; review cluster representative first.");
+  } else if (Number(event.eventClusterSize ?? 0) > 1) {
+    score -= 5;
+    confidenceDrivers.push(`${event.eventClusterSize} likely incident-cluster rows.`);
+  }
+  if (event.actor1 === "Unknown" || event.actor2 === "Unknown") {
+    score += 13;
+    warnings.push("Actor extraction is missing or generic.");
+  }
+  if (/source-mismatch|background|local crime|entertainment|history|opinion/.test(reasons)) {
+    score += 17;
+    warnings.push("Surfacing policy found source-quality or row-quality caveats.");
+  }
+  if (thresholdDistance <= 5) {
+    score += 14;
+    warnings.push("Priority is close to an Assign/Watch/Dismiss threshold.");
+  } else {
+    confidenceDrivers.push("Priority is not close to a review threshold.");
+  }
+
+  score = Math.round(clamp(score, 0, 100));
+  const level: UncertaintyLevel = score >= 66 ? "high" : score >= 38 ? "medium" : "low";
+
+  return {
+    level,
+    score,
+    warnings: [...new Set(warnings)].slice(0, 6),
+    confidenceDrivers: [...new Set(confidenceDrivers)].slice(0, 6),
+  };
+}
+
+function ensureReviewMetadata(event: GdeltEvent): GdeltEvent {
+  const surfaceExplanation = event.surfaceExplanation ?? fallbackSurfaceExplanation(event);
+  const uncertainty = event.uncertainty ?? fallbackEventUncertainty(event);
+  return {
+    ...event,
+    surfaceExplanation,
+    uncertainty,
+    eventClusterId: event.eventClusterId ?? `incident-${event.id}`,
+    eventClusterSize: event.eventClusterSize ?? 1,
+    eventClusterRole: event.eventClusterRole ?? "representative",
+    eventClusterReasons: event.eventClusterReasons ?? ["No likely same-incident rows found."],
+  };
+}
+
+function sourceCheckedCoverage(labels: Phase1Label[], eventsById: Map<string, GdeltEvent>) {
+  const sourceCheckedEventIds = new Set<string>();
+  const continentCounts = new Map<string, number>();
+  const themeCounts = new Map<string, number>();
+  const domainCounts = new Map<string, number>();
+
+  for (const label of labels) {
+    if (!isSourceCheckedHumanLabel(label)) continue;
+    const event = eventsById.get(label.eventId);
+    if (!event) continue;
+    sourceCheckedEventIds.add(label.eventId);
+    continentCounts.set(event.continent, (continentCounts.get(event.continent) ?? 0) + 1);
+    if (event.theme) themeCounts.set(event.theme, (themeCounts.get(event.theme) ?? 0) + 1);
+    const domain = hostFromUrl(event.sourceUrl);
+    if (domain) domainCounts.set(domain, (domainCounts.get(domain) ?? 0) + 1);
+  }
+
+  return { sourceCheckedEventIds, continentCounts, themeCounts, domainCounts };
+}
+
+function reviewCoverageGapScore(event: GdeltEvent, coverage: ReturnType<typeof sourceCheckedCoverage>): number {
+  const continentCount = coverage.continentCounts.get(event.continent) ?? 0;
+  const themeCount = event.theme ? coverage.themeCounts.get(event.theme) ?? 0 : 0;
+  const domain = hostFromUrl(event.sourceUrl);
+  const domainCount = domain ? coverage.domainCounts.get(domain) ?? 0 : 0;
+
+  return Math.round(clamp(
+    clamp(10 - continentCount * 1.6, 0, 10) +
+    clamp(8 - themeCount * 1.5, 0, 8) +
+    (domain && domainCount === 0 ? 5 : 0),
+    0,
+    25
+  ));
+}
+
+function activeLearningComponents(event: GdeltEvent, coverage: ReturnType<typeof sourceCheckedCoverage>) {
+  const priority = Math.round(clamp(surfaceSortScore(event), 0, 100));
+  const uncertainty = Math.round(clamp(event.uncertainty?.score ?? 50, 0, 100));
+  const threshold = Math.round(clamp(
+    16 - Math.min(Math.abs(priority - REVIEW_ASSIGN_THRESHOLD), Math.abs(priority - REVIEW_WATCH_THRESHOLD)) * 1.8,
+    0,
+    16
+  ));
+  const coverageScore = reviewCoverageGapScore(event, coverage);
+
+  return { priority, uncertainty, threshold, coverage: coverageScore };
+}
+
+function buildActiveLearningReasons(event: GdeltEvent, components: ReturnType<typeof activeLearningComponents>): string[] {
+  const reasons = [
+    components.priority >= REVIEW_ASSIGN_THRESHOLD
+      ? "High-priority surfaced lead."
+      : components.priority >= REVIEW_WATCH_THRESHOLD
+      ? "Near the Watch/Assign decision band."
+      : "Background row may still teach the filter.",
+    components.threshold > 0 ? "Close to a review threshold, so a human label is informative." : null,
+    components.uncertainty >= 66 ? "High uncertainty needs source checking." : components.uncertainty >= 38 ? "Medium uncertainty can improve calibration." : null,
+    components.priority >= REVIEW_WATCH_THRESHOLD && event.uncertainty?.level === "high" ? "Important-looking row with shaky evidence." : null,
+    components.coverage > 10 ? "Under-reviewed region/theme/source coverage gap." : components.coverage > 0 ? "Adds coverage diversity." : null,
+    event.duplicateOf || event.eventClusterRole === "member" ? "Cluster member or duplicate; review the representative instead." : null,
+  ].filter((reason): reason is string => Boolean(reason));
+
+  return [...new Set([...(event.activeLearningReasons ?? []), ...reasons])].slice(0, 6);
+}
+
+function queueScoreForMode(mode: ReviewQueueMode, event: GdeltEvent, components: ReturnType<typeof activeLearningComponents>): number {
+  const thinImportant = components.priority >= REVIEW_WATCH_THRESHOLD && event.uncertainty?.level === "high" ? 14 : 0;
+  const base = components.priority * 0.42 + components.uncertainty * 0.24 + components.threshold + components.coverage + thinImportant;
+
+  if (mode === "uncertain") {
+    return Math.round(clamp(components.uncertainty * 0.55 + components.threshold * 1.6 + components.priority * 0.22 + thinImportant, 0, 100));
+  }
+  if (mode === "coverage") {
+    return Math.round(clamp(components.coverage * 2.5 + components.priority * 0.28 + components.uncertainty * 0.18, 0, 100));
+  }
+  return Math.round(clamp(event.activeLearningScore ?? base, 0, 100));
+}
+
+function buildReviewQueueRows(events: GdeltEvent[], labels: Phase1Label[], mode: ReviewQueueMode, limit: number): { rows: ReviewQueueRow[]; counts: Record<string, number> } {
+  const eventsById = new Map(events.map((event) => [event.id, event]));
+  const labelById = new Map(labels.map((label) => [label.eventId, label]));
+  const coverage = sourceCheckedCoverage(labels, eventsById);
+  const candidates = events
+    .map(ensureReviewMetadata)
+    .filter((event) => !isSourceCheckedHumanLabel(labelById.get(event.id)))
+    .filter((event) => event.duplicateOf == null)
+    .filter((event) => event.eventClusterRole !== "member");
+
+  const rows = candidates
+    .map((event) => {
+      const components = activeLearningComponents(event, coverage);
+      const queueScore = queueScoreForMode(mode, event, components);
+      return {
+        event,
+        rank: 0,
+        queueScore,
+        mode,
+        activeLearning: {
+          score: queueScore,
+          reasons: buildActiveLearningReasons(event, components),
+          components,
+        },
+      };
+    })
+    .sort((a, b) =>
+      b.queueScore - a.queueScore ||
+      surfaceSortScore(b.event) - surfaceSortScore(a.event) ||
+      Number(b.event.numMentions ?? 0) - Number(a.event.numMentions ?? 0)
+    )
+    .slice(0, limit)
+    .map((row, index) => ({ ...row, rank: index + 1 }));
+
+  return {
+    rows,
+    counts: {
+      totalEvents: events.length,
+      candidates: candidates.length,
+      returned: rows.length,
+      sourceCheckedHumanLabels: coverage.sourceCheckedEventIds.size,
+      excludedDuplicates: events.filter((event) => event.duplicateOf != null).length,
+      excludedClusterMembers: events.filter((event) => event.eventClusterRole === "member").length,
+    },
+  };
 }
 
 function isSafeHttpUrl(url: string): boolean {
@@ -1310,15 +1670,179 @@ function buildUncertaintyWarnings(source: SourceEvidence | null, relatedSignals:
   return warnings;
 }
 
+function uniqueStrings(items: Array<string | null | undefined>, limit: number): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+
+  for (const item of items) {
+    const clean = item?.trim();
+    if (!clean) continue;
+    const key = clean.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(clean);
+    if (out.length >= limit) break;
+  }
+
+  return out;
+}
+
+function displaySurfaceReason(reason: string): string {
+  return reason.startsWith("penalty: ")
+    ? `Caveat: ${reason.slice("penalty: ".length)}`
+    : reason;
+}
+
+function reviewDecision(priority: number): ReviewCopilot["suggestedDecision"]["decision"] {
+  if (priority >= REVIEW_ASSIGN_THRESHOLD) return "assign";
+  if (priority >= REVIEW_WATCH_THRESHOLD) return "watch";
+  return "dismiss";
+}
+
+function reviewDecisionLabel(decision: ReviewCopilot["suggestedDecision"]["decision"]): ReviewCopilot["suggestedDecision"]["label"] {
+  if (decision === "assign") return "Assign";
+  if (decision === "watch") return "Watch";
+  return "Dismiss";
+}
+
+function reviewDecisionDescription(decision: ReviewCopilot["suggestedDecision"]["decision"]): string {
+  if (decision === "assign") return "assign for deeper investigation";
+  if (decision === "watch") return "watch for corroboration or follow-through";
+  return "dismiss as background unless new evidence appears";
+}
+
+function buildWhySurfaced(target: GdeltEvent, prediction: ModelPrediction | undefined, relatedSignals: RelatedSignal[]): string[] {
+  const structuredReasons = target.surfaceExplanation
+    ? [
+        ...target.surfaceExplanation.boosts,
+        ...target.surfaceExplanation.penalties.map((penalty) => `Caveat: ${penalty}`),
+        ...target.surfaceExplanation.caveats,
+      ]
+    : (target.surfaceReasons ?? []).map(displaySurfaceReason);
+
+  return uniqueStrings([
+    ...structuredReasons,
+    target.severity === "critical" || target.severity === "high" ? `${target.severity} severity signal` : null,
+    target.quadClass === 4 ? "material conflict event class" : null,
+    target.quadClass === 1 || target.quadClass === 2 ? "cooperation event class" : null,
+    Number(target.numMentions ?? 0) >= 20 ? `${target.numMentions} media mentions` : null,
+    Number(target.surfaceClusterSize ?? 0) > 1 ? `${target.surfaceClusterSize} related source rows in this cluster` : null,
+    prediction ? `trained model estimates ${Math.round(prediction.probability * 100)}% ${prediction.target} risk` : null,
+    relatedSignals.length > 0 ? `${relatedSignals.length} related signals in the local event graph` : null,
+    target.sourceUrl ? `source domain: ${hostFromUrl(target.sourceUrl) || "available"}` : "no source URL attached",
+  ], 7);
+}
+
+function buildWhatToVerify(target: GdeltEvent, source: SourceEvidence | null, relatedSignals: RelatedSignal[]): string[] {
+  const actorCheck = target.actor1 === "Unknown" || target.actor2 === "Unknown"
+    ? "Resolve missing or generic actor fields before treating the row as a clean event."
+    : `Confirm the source really describes ${eventActors(target)}, not only background context.`;
+
+  return uniqueStrings([
+    target.sourceUrl
+      ? "Open the source and confirm the event, date, location, and actors match the row."
+      : "Find an independent source because this row has no source URL.",
+    source?.fetched
+      ? "Check whether the extracted source title and text support the selected event."
+      : source?.status || "Source text was not available, so verify with outside context before labeling.",
+    actorCheck,
+    Number(target.numMentions ?? 0) <= 1
+      ? "Find a second independent report because the mention count is very low."
+      : "Check whether high media coverage is original reporting or copied coverage of the same article.",
+    relatedSignals.length > 0
+      ? "Decide whether linked signals are the same incident, follow-on events, or unrelated co-reporting."
+      : "Look for nearby or same-actor follow-up events before assuming this is isolated.",
+    "Only mark a label source-checked after a human has inspected enough source context.",
+  ], 6);
+}
+
+function buildReviewUncertainty(target: GdeltEvent, pack: {
+  source: SourceEvidence | null;
+  relatedSignals: RelatedSignal[];
+  impactMap: ImpactVector[];
+  evidenceGrade: ProbePack["evidenceGrade"];
+}): string[] {
+  return uniqueStrings([
+    target.uncertainty ? `Event uncertainty is ${target.uncertainty.level} at ${target.uncertainty.score}/100.` : null,
+    ...(target.uncertainty?.warnings ?? []),
+    `Evidence grade is ${pack.evidenceGrade.label} at ${Math.round(pack.evidenceGrade.confidence * 100)}%.`,
+    ...pack.evidenceGrade.reasons,
+    ...buildUncertaintyWarnings(pack.source, pack.relatedSignals, pack.impactMap),
+    target.duplicateOf ? `This row is marked as a duplicate of ${target.duplicateOf}.` : null,
+    target.eventClusterRole === "member" ? `This row is a member of ${target.eventClusterId}; review the representative first.` : null,
+    (target.surfaceReasons ?? []).some((reason) => reason.toLowerCase().includes("source-mismatch"))
+      ? "Surfacing policy flagged possible source mismatch."
+      : null,
+  ], 6);
+}
+
+function buildReviewWatchNext(target: GdeltEvent, actorGame: ActorGame[], watchlist: string[], relatedSignals: RelatedSignal[]): string[] {
+  const topActor = actorGame[0];
+  return uniqueStrings([
+    ...watchlist,
+    topActor?.likelyMoves?.[0] ? `${topActor.actor} likely move to watch: ${topActor.likelyMoves[0]}` : null,
+    topActor?.decisionTraps?.[0] ? `Decision trap to watch: ${topActor.decisionTraps[0]}.` : null,
+    relatedSignals.some((signal) => (signal.probability ?? 0) >= 0.7)
+      ? "If high-probability links grow over the next 24-72 hours, raise review priority."
+      : "If no corroborating signal appears, lower confidence in the row.",
+  ], 6);
+}
+
+function buildReviewCopilot(
+  target: GdeltEvent,
+  source: SourceEvidence | null,
+  relatedSignals: RelatedSignal[],
+  prediction: ModelPrediction | undefined,
+  impactMap: ImpactVector[],
+  actorGame: ActorGame[],
+  watchlist: string[],
+  evidenceGrade: ProbePack["evidenceGrade"]
+): ReviewCopilot {
+  const priority = Math.round(clamp(surfaceSortScore(target), 0, 100));
+  const decision = reviewDecision(priority);
+  const label = reviewDecisionLabel(decision);
+  const boundary = decision === "assign" ? REVIEW_ASSIGN_THRESHOLD : REVIEW_WATCH_THRESHOLD;
+  const thresholdMargin = decision === "watch"
+    ? Math.min(priority - REVIEW_WATCH_THRESHOLD, REVIEW_ASSIGN_THRESHOLD - priority)
+    : Math.abs(priority - boundary);
+  const confidence = Math.round(clamp(
+    42 + Math.max(0, thresholdMargin) * 0.65 + evidenceGrade.confidence * 28 + Math.min(8, relatedSignals.length),
+    28,
+    88
+  ));
+  const location = target.location || target.country || "unknown location";
+  const evidenceWord = evidenceGrade.label === "strong" ? "well-supported" : evidenceGrade.label === "partial" ? "partly supported" : "thin";
+  const bottomLine =
+    `${label}: ${eventActors(target)} in ${location} is a ${target.severity} ${target.theme ?? "event"} signal with priority ${priority}/100. ` +
+    `Treat the evidence as ${evidenceWord}; this is a review aid, not source-checked ground truth.`;
+
+  return {
+    bottomLine,
+    whySurfaced: buildWhySurfaced(target, prediction, relatedSignals),
+    whatToVerify: buildWhatToVerify(target, source, relatedSignals),
+    uncertainty: buildReviewUncertainty(target, { source, relatedSignals, impactMap, evidenceGrade }),
+    suggestedDecision: {
+      decision,
+      label,
+      confidence,
+      rationale: `Priority ${priority}/100 maps to ${reviewDecisionDescription(decision)}. Evidence grade is ${evidenceGrade.label}, so a human should verify the source before this becomes an answer-key label.`,
+    },
+    watchNext: buildReviewWatchNext(target, actorGame, watchlist, relatedSignals),
+  };
+}
+
 async function buildProbePack(inputEvent: GdeltEvent, fetchSource = true): Promise<ProbePack> {
   const dataset = await loadEventDataset().catch(() => ({ events: [] as GdeltEvent[], updated: undefined as string | undefined }));
   const datasetEvent = dataset.events.find((candidate) => candidate.id === inputEvent.id);
-  const selectedEvent = datasetEvent ? { ...datasetEvent, ...inputEvent } : inputEvent;
-  const corpus = dataset.events.length > 0 ? dataset.events : [selectedEvent];
+  const selectedEvent = ensureReviewMetadata(datasetEvent ? { ...datasetEvent, ...inputEvent } : inputEvent);
+  const corpus = dataset.events.length > 0 ? dataset.events.map(ensureReviewMetadata) : [selectedEvent];
   const source = fetchSource ? await fetchSourceEvidence(selectedEvent.sourceUrl) : null;
   const relatedSignals = findRelatedSignals(selectedEvent, corpus).map(withSignalProbability);
   const impactMap = buildImpactMap(selectedEvent, relatedSignals, source);
   const prediction = await predictEscalation(selectedEvent, corpus);
+  const actorGame = buildActorGame(selectedEvent, relatedSignals);
+  const watchlist = buildWatchlist(selectedEvent, impactMap, relatedSignals);
+  const evidenceGrade = buildEvidenceGrade(selectedEvent, source, relatedSignals);
 
   return {
     selectedEvent,
@@ -1329,9 +1853,10 @@ async function buildProbePack(inputEvent: GdeltEvent, fetchSource = true): Promi
     entities: buildEntities(selectedEvent, relatedSignals, source),
     impactMap,
     hypotheses: buildHypotheses(selectedEvent, relatedSignals, source),
-    actorGame: buildActorGame(selectedEvent, relatedSignals),
-    watchlist: buildWatchlist(selectedEvent, impactMap, relatedSignals),
-    evidenceGrade: buildEvidenceGrade(selectedEvent, source, relatedSignals),
+    actorGame,
+    watchlist,
+    reviewCopilot: buildReviewCopilot(selectedEvent, source, relatedSignals, prediction, impactMap, actorGame, watchlist, evidenceGrade),
+    evidenceGrade,
     uncertaintyWarnings: buildUncertaintyWarnings(source, relatedSignals, impactMap),
   };
 }
@@ -1412,11 +1937,44 @@ function formatProbeForPrompt(pack: ProbePack): string {
     `- ${g.actor}\n  Incentives: ${g.incentives.join(" | ")}\n  Constraints: ${g.constraints.join(" | ")}\n  Likely moves: ${g.likelyMoves.join(" | ")}\n  Decision traps: ${g.decisionTraps.join(" | ")}`
   ).join("\n");
 
+  const copilot = pack.reviewCopilot
+    ? [
+      `Bottom line: ${pack.reviewCopilot.bottomLine}`,
+      `Suggested decision: ${pack.reviewCopilot.suggestedDecision.label} (${pack.reviewCopilot.suggestedDecision.confidence}% confidence)`,
+      `Rationale: ${pack.reviewCopilot.suggestedDecision.rationale}`,
+      `Why surfaced: ${pack.reviewCopilot.whySurfaced.join(" | ")}`,
+      `Human verification tasks: ${pack.reviewCopilot.whatToVerify.join(" | ")}`,
+      `Uncertainty: ${pack.reviewCopilot.uncertainty.join(" | ")}`,
+    ].join("\n")
+    : "No reviewer copilot packet available.";
+
+  const surface = pack.selectedEvent.surfaceExplanation
+    ? [
+      `Surface label: ${pack.selectedEvent.surfaceExplanation.label}`,
+      `Surface summary: ${pack.selectedEvent.surfaceExplanation.summary}`,
+      `Boosts: ${pack.selectedEvent.surfaceExplanation.boosts.join(" | ") || "none"}`,
+      `Penalties: ${pack.selectedEvent.surfaceExplanation.penalties.join(" | ") || "none"}`,
+      `Caveats: ${pack.selectedEvent.surfaceExplanation.caveats.join(" | ") || "none"}`,
+    ].join("\n")
+    : "No structured surface explanation available.";
+
+  const uncertainty = pack.selectedEvent.uncertainty
+    ? [
+      `Level: ${pack.selectedEvent.uncertainty.level}`,
+      `Score: ${pack.selectedEvent.uncertainty.score}/100`,
+      `Warnings: ${pack.selectedEvent.uncertainty.warnings.join(" | ") || "none"}`,
+      `Confidence drivers: ${pack.selectedEvent.uncertainty.confidenceDrivers.join(" | ") || "none"}`,
+    ].join("\n")
+    : "No structured uncertainty object available.";
+
   return [
     `SELECTED EVENT\n${formatEventForPrompt(pack.selectedEvent)}`,
+    `SURFACING EXPLANATION\n${surface}`,
+    `ROW UNCERTAINTY\n${uncertainty}`,
     pack.prediction
       ? `TRAINED MODEL PREDICTION\nFuture critical escalation risk: ${Math.round(pack.prediction.probability * 100)}% (${pack.prediction.label}). Threshold: ${Math.round(pack.prediction.threshold * 100)}%. Model: ${pack.prediction.modelVersion}. Held-out metrics: ${JSON.stringify(pack.prediction.metrics ?? {})}. Top drivers: ${pack.prediction.drivers.map((d) => `${d.feature} ${d.direction} risk (${d.contribution})`).join(" | ")}`
       : "TRAINED MODEL PREDICTION\nNo trained model artifact found.",
+    `REVIEWER COPILOT\n${copilot}`,
     `SOURCE ARTICLE EVIDENCE\n${sourceBlock}`,
     `EVIDENCE GRADE\n${pack.evidenceGrade.label} (${Math.round(pack.evidenceGrade.confidence * 100)}%): ${pack.evidenceGrade.reasons.join(" | ")}`,
     `ENTITIES\n${pack.entities.map((e) => `- ${e.name} (${e.type}, salience ${e.salience}): ${e.evidence.join(" | ")}`).join("\n")}`,
@@ -1527,6 +2085,7 @@ app.get("/api/events", async (c) => {
   try {
     const dataset = await loadEventDataset();
     let events = filterEventsByDatasetWindow(dataset.events, days);
+    events = events.map(ensureReviewMetadata);
 
     events = [...events].sort((a: any, b: any) =>
       surfaceSortScore(b) - surfaceSortScore(a) ||
@@ -1539,6 +2098,51 @@ app.get("/api/events", async (c) => {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("API -> Failed to read events.json:", msg);
     return c.json({ error: "Failed to load pre-enriched event dataset", events: [], count: 0 }, 500);
+  }
+});
+
+app.get("/api/review-queue", async (c) => {
+  const rawDays = c.req.query("days") ?? "7";
+  const rawLimit = c.req.query("limit") ?? "50";
+  const rawMode = c.req.query("mode") ?? "priority";
+  const days = Number.parseInt(rawDays, 10);
+  const limit = Number.parseInt(rawLimit, 10);
+
+  if (!Number.isInteger(days) || String(days) !== rawDays || days < 1 || days > 30) {
+    return c.json({ error: "Invalid days. Use an integer from 1 to 30." }, 400);
+  }
+  if (!Number.isInteger(limit) || String(limit) !== rawLimit || limit < 1 || limit > 100) {
+    return c.json({ error: "Invalid limit. Use an integer from 1 to 100." }, 400);
+  }
+  if (rawMode !== "priority" && rawMode !== "uncertain" && rawMode !== "coverage") {
+    return c.json({ error: "Invalid mode. Use priority, uncertain, or coverage." }, 400);
+  }
+
+  try {
+    const dataset = await loadEventDataset();
+    const labels = await loadPhase1Labels();
+    const events = filterEventsByDatasetWindow(dataset.events, days).map(ensureReviewMetadata);
+    const { rows, counts } = buildReviewQueueRows(events, labels, rawMode, limit);
+
+    return c.json({
+      queue: rows,
+      counts,
+      strategy: {
+        mode: rawMode,
+        days,
+        limit,
+        ranking: rawMode === "priority"
+          ? "Prioritize high-value rows that are not source-checked and are not duplicate/cluster members."
+          : rawMode === "uncertain"
+          ? "Prioritize rows where a human label would reduce uncertainty near a review threshold."
+          : "Prioritize under-reviewed regions, themes, and source domains.",
+      },
+      caveat: "Active learning chooses useful rows for human source-checking. It does not create ground truth and never marks labels humanReviewed or sourceChecked.",
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("API -> Failed to build review queue:", msg);
+    return c.json({ error: `Failed to build review queue: ${msg}`, queue: [] }, 500);
   }
 });
 
@@ -1684,33 +2288,51 @@ app.post("/api/analyze", async (c) => {
   let userPrompt: string;
   let probePack: ProbePack | null = null;
 
-  if (mode === "detail" && events.length === 1) {
+  if ((mode === "detail" || mode === "review_note") && events.length === 1) {
     probePack = await buildProbePack(events[0], true);
 
-    userPrompt =
-      `Build a research-level intelligence probe for this selected event.\n\n` +
-      `IMPORTANT LIMITS:\n` +
-      `- GDELT is media-derived and noisy. The article source may also be biased or incomplete.\n` +
-      `- Your confidence numbers are analytic probabilities, not guarantees.\n` +
-      `- If finance, market, or local-impact evidence is missing, say "no direct evidence in this pack" and infer carefully.\n\n` +
-      `INTELLIGENCE PACK\n${formatProbeForPrompt(probePack)}\n\n` +
-      `Output in concise Markdown with exactly these sections:\n` +
-      `## Bottom line\n` +
-      `One clear paragraph: what likely happened, why it matters, and your confidence.\n\n` +
-      `## Evidence used\n` +
-      `Bullets for source article, GDELT metadata, and related signals. State data quality problems.\n\n` +
-      `## Cause hypotheses\n` +
-      `Give 2-4 competing hypotheses. For each: mechanism, evidence for, evidence against/missing, confidence percent.\n\n` +
-      `## Actor psychology and game theory\n` +
-      `Explain incentives, fears, leverage, audience costs, bargaining position, and likely decision traps.\n\n` +
-      `## What happens next\n` +
-      `Give scenario outlooks for 24-72 hours, 1-2 weeks, and 1-3 months. Include probability ranges and triggers that would change your assessment.\n\n` +
-      `## Impact map\n` +
-      `Separate local safety/humanitarian, policy/diplomacy, finance/markets/supply chains, social psychology/media narrative.\n\n` +
-      `## Linked events\n` +
-      `Explain how the related GDELT events may connect. Do not force a connection if the relationship is weak.\n\n` +
-      `## Watchlist\n` +
-      `Give concrete signals to monitor next.`;
+    if (mode === "review_note") {
+      userPrompt =
+        `Draft a short reviewer note for a human analyst deciding whether this public event should be assigned, watched, or dismissed.\n\n` +
+        `IMPORTANT LIMITS:\n` +
+        `- This is assistant drafting, not evidence and not a source-checked human label.\n` +
+        `- Do not say the event is verified unless the evidence pack proves it.\n` +
+        `- Keep the note grounded in the source, GDELT metadata, related signals, and reviewer copilot packet.\n` +
+        `- Separate what is known from what is inferred.\n\n` +
+        `INTELLIGENCE PACK\n${formatProbeForPrompt(probePack)}\n\n` +
+        `Output concise Markdown with exactly these sections:\n` +
+        `## Draft review note\n` +
+        `2-4 sentences explaining why the event deserves assign/watch/dismiss attention.\n\n` +
+        `## Evidence to check\n` +
+        `3 bullets the human should verify before marking any source-checked label.\n\n` +
+        `## Decision caveat\n` +
+        `One sentence reminding the reviewer this AI note is not ground truth.`;
+    } else {
+      userPrompt =
+        `Build a research-level intelligence probe for this selected event.\n\n` +
+        `IMPORTANT LIMITS:\n` +
+        `- GDELT is media-derived and noisy. The article source may also be biased or incomplete.\n` +
+        `- Your confidence numbers are analytic probabilities, not guarantees.\n` +
+        `- If finance, market, or local-impact evidence is missing, say "no direct evidence in this pack" and infer carefully.\n\n` +
+        `INTELLIGENCE PACK\n${formatProbeForPrompt(probePack)}\n\n` +
+        `Output in concise Markdown with exactly these sections:\n` +
+        `## Bottom line\n` +
+        `One clear paragraph: what likely happened, why it matters, and your confidence.\n\n` +
+        `## Evidence used\n` +
+        `Bullets for source article, GDELT metadata, and related signals. State data quality problems.\n\n` +
+        `## Cause hypotheses\n` +
+        `Give 2-4 competing hypotheses. For each: mechanism, evidence for, evidence against/missing, confidence percent.\n\n` +
+        `## Actor psychology and game theory\n` +
+        `Explain incentives, fears, leverage, audience costs, bargaining position, and likely decision traps.\n\n` +
+        `## What happens next\n` +
+        `Give scenario outlooks for 24-72 hours, 1-2 weeks, and 1-3 months. Include probability ranges and triggers that would change your assessment.\n\n` +
+        `## Impact map\n` +
+        `Separate local safety/humanitarian, policy/diplomacy, finance/markets/supply chains, social psychology/media narrative.\n\n` +
+        `## Linked events\n` +
+        `Explain how the related GDELT events may connect. Do not force a connection if the relationship is weak.\n\n` +
+        `## Watchlist\n` +
+        `Give concrete signals to monitor next.`;
+    }
   } else {
     const top = events.slice(0, 50);
     const lines = top.map(
@@ -1737,7 +2359,7 @@ app.post("/api/analyze", async (c) => {
       },
       body: JSON.stringify({
         model: ANTHROPIC_MODEL,
-        max_tokens: mode === "detail" ? 2_200 : 1_200,
+        max_tokens: mode === "detail" ? 2_200 : mode === "review_note" ? 700 : 1_200,
         system: SYSTEM_PROMPT,
         messages: [{ role: "user", content: userPrompt }],
       }),

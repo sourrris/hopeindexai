@@ -1,6 +1,6 @@
 {
   "version": "phase1-surfacing-policy-v1",
-  "generatedAt": "2026-06-01T16:10:17.664Z",
+  "generatedAt": "2026-06-12T04:18:56.761Z",
   "labelSource": "provisional_non_human",
   "threshold": 66,
   "bandCutoffs": {
@@ -31,10 +31,11 @@
     "labels": {
       "rows": 120,
       "sourceCounts": {
-        "llm_article_review": 120
+        "human": 4,
+        "llm_article_review": 116
       },
-      "humanReviewedRows": 0,
-      "sourceCheckedHumanRows": 0,
+      "humanReviewedRows": 4,
+      "sourceCheckedHumanRows": 4,
       "uncheckedHumanReviewedRows": 0
     },
     "baseline": {
@@ -101,6 +102,11 @@
       "top10": 1,
       "top25": 0.96,
       "top50": 0.68
+    },
+    "clusters": {
+      "sourceClusters": 373,
+      "incidentClusters": 824,
+      "incidentClusterMembers": 676
     }
   },
   "warning": "This policy is calibrated on Codex/LLM-reviewed labels unless at least 100 source-checked human labels are present. It improves product triage but is not a final scientific claim."

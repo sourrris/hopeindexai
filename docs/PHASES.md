@@ -69,6 +69,9 @@ Built now:
 - Event windows filter relative to the latest date in the dataset.
 - Event order uses `surfaceScore`, with `markerRadius` as fallback.
 - The default UI is an assignment queue with `Assign`, `Watch`, and `Dismiss` prototype decisions.
+- The Reviewer Copilot prepares source checks, uncertainty notes, and watch items for the selected assignment row.
+- `/api/review-queue` ranks active-learning candidates without changing labels.
+- Event rows include deterministic incident-cluster, why-surfaced, and uncertainty metadata.
 - Ontology validation exists.
 - API smoke testing exists.
 - TypeScript checking exists.
@@ -91,6 +94,9 @@ Done means:
 - No non-human label is marked `humanReviewed: true`.
 - Improvement claims require at least 100 source-checked human labels with `reviewContext.sourceChecked: true`.
 - Local browser assignment notes are not source-checked ground truth and do not update eval labels.
+- Reviewer Copilot and LLM review notes are analyst assistance only; they do not mark labels as source-checked.
+- Active learning recommends the next rows to source-check; it never creates human labels by itself.
+- Cluster members and duplicate rows should point reviewers toward the representative row first.
 - Root and `public/` frontend files stay in sync.
 
 Proof:
@@ -119,8 +125,9 @@ Step-by-step:
 3. Import UCDP GED as historical organized-violence evidence.
 4. Match training records against external evidence by date, country, location, actor, and type.
 5. Review 20 to 30 more labels by hand after opening the source URL or enough source context.
-6. Rebuild records and rerun eval.
-7. Repeat until 100 source-checked human labels exist.
+6. Use the active-learning queue to balance high priority, uncertainty, and coverage gaps.
+7. Rebuild records and rerun eval.
+8. Repeat until 100 source-checked human labels exist.
 
 Commands:
 

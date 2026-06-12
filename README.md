@@ -45,6 +45,7 @@ bun run records:build       # build training-grade record drafts
 bun run records:validate    # validate training record guardrails
 bun run import:ucdp         # normalize local UCDP GED CSV into compact evidence
 bun run match:external      # match training records against external evidence
+bun run surface:phase1      # refresh surfacing, clustering, uncertainty, and review queue fields
 bun run eval:phase1         # baseline vs candidate eval
 bun run test:all            # full lightweight quality gate
 ```
@@ -76,6 +77,16 @@ Should this public event be assigned for deeper investigation?
 ```
 
 The UI recommends `Assign`, `Watch`, or `Dismiss` from the existing `surfaceScore` thresholds and lets the analyst save local prototype notes in the browser. Those exported notes are not source-checked human ground truth and do not modify eval files.
+
+The queue now uses active learning modes:
+
+- `Priority` finds high-value rows that are not already source-checked.
+- `Uncertain` finds rows where a human answer would reduce model confusion.
+- `Coverage gaps` finds under-reviewed regions, themes, or sources.
+
+In simple ML terms: clustering prevents grading the same incident twice, uncertainty says how shaky the row is, and active learning picks the next homework examples that can improve the answer key fastest.
+
+The Reviewer Copilot prepares the review packet for that decision. It explains why the event surfaced, what a human should verify, what uncertainty remains, and what to watch next. When an Anthropic API key is configured, it can draft a short review note, but that note is assistant text only. It is not evidence, not a human label, and not source-checked ground truth.
 
 ## Architecture
 
