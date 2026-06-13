@@ -24,6 +24,11 @@ const WORLD_BOUNDS = L.latLngBounds(L.latLng(-85, -180), L.latLng(85, 180));
 const CONTINENTS  = ["All", "Americas", "Europe", "Middle East", "Africa", "Asia", "Oceania"];
 const CATEGORIES  = ["All", "Diplomacy", "Conflict", "Econ", "Environment", "Humanitarian", "Science"];
 const DAY_OPTIONS = [1, 3, 7, 30];
+const DATA_SOURCES = [
+  { value: "static", label: "Saved demo" },
+  { value: "live", label: "Live feed" },
+];
+const RELATED_SIGNAL_MIN_SCORE = 42;
 
 const GITHUB_URL = "https://github.com/sourrris/hopeindexai";
 const ASSIGNMENT_STORAGE_KEY = "hopeindexai.assignmentDecisions.v1";
@@ -34,15 +39,15 @@ const ASSIGNMENT_THRESHOLDS = {
 };
 
 const RECOMMENDATION_META = {
-  assign: { label: "Assign", description: "Send this event for deeper investigation." },
-  watch: { label: "Watch", description: "Keep monitoring until more evidence arrives." },
-  dismiss: { label: "Dismiss", description: "Treat as background noise for now." },
+  assign: { label: "Important", description: "Ask a person to check this source carefully." },
+  watch: { label: "Watch", description: "Keep an eye on this until more evidence arrives." },
+  dismiss: { label: "Ignore", description: "Treat this as weak or background noise for now." },
 };
 
 const DECISION_OPTIONS = [
-  { value: "assign", label: "Assign" },
+  { value: "assign", label: "Important" },
   { value: "watch", label: "Watch" },
-  { value: "dismiss", label: "Dismiss" },
+  { value: "dismiss", label: "Ignore" },
 ];
 
 const QUEUE_MODES = [
@@ -107,6 +112,49 @@ function eventTitle(event) {
   return event.actor1 !== "Unknown"
     ? `${event.actor1}${event.actor2 && event.actor2 !== "Unknown" ? " -> " + event.actor2 : ""}`
     : event.quadLabel;
+}
+
+function simpleEventTitle(event) {
+  const title = eventTitle(event);
+  const genericParts = [
+    "ACTOR", "BUSINESS", "COMPANY", "MEDIA", "POLICE", "AUTHORITIES", "ADMINISTRATION",
+    "COMMUNITY", "DETECTIVE", "FIGHTER", "PROTESTER", "RIOTER", "TEXAS", "FLORIDA",
+    "AMERICAN", "UNITED KINGDOM", "UNITED STATES", "WRITER", "SAN DIEGO", "ASSAILANT",
+    "POLICE PERSONNEL", "Material Conflict",
+  ];
+  if (genericParts.some((part) => title.includes(part)) || title.length < 5) {
+    return `${event.theme || "Event"} signal in ${event.location || event.country || "unknown place"}`;
+  }
+  return title;
+}
+
+function eventTopicLabel(event) {
+  if (event.theme === "Science" && event.quadClass === 4) return "Weak extracted topic";
+  return event.theme || "Unclassified";
+}
+
+function gdeltClassExplanation(event) {
+  if (event.quadClass === 4) {
+    return "Raw GDELT bucket for physical/coercive actions. It is not specific enough to prove terrorism, war, or a real attack without source checking.";
+  }
+  if (event.quadClass === 3) {
+    return "Raw GDELT bucket for verbal conflict such as accusations, warnings, threats, or criticism.";
+  }
+  if (event.quadClass === 2) {
+    return "Raw GDELT bucket for material cooperation such as aid, agreements, visits, or concrete support.";
+  }
+  if (event.quadClass === 1) {
+    return "Raw GDELT bucket for verbal cooperation such as statements, appeals, or diplomatic support.";
+  }
+  return "Raw GDELT bucket is missing or unknown.";
+}
+
+function simpleWarningText(warning) {
+  return String(warning)
+    .replace("Priority is close to an Assign/Watch/Dismiss threshold.", "The score is close to the line between choices.")
+    .replace("Actor or event title is generic, so row parsing may be weak.", "The title is vague, so check the source carefully.")
+    .replace("Single-mention signal; find another source before trusting it.", "Only one source mentioned this; look for another source.")
+    .replace("GDELT rows are media-derived signals, not verified ground truth.", "This is a news-data signal, not confirmed truth.");
 }
 
 function eventSignalScore(event) {
@@ -391,67 +439,70 @@ function scoreRelatedSignal(target, candidate) {
 
   let score = 0;
   const reasons = [];
+  const contextReasons = [];
   const targetHost = sourceHost(target.sourceUrl);
   const candidateHost = sourceHost(candidate.sourceUrl);
+  const days = daysApart(target, candidate);
+  let hasAnchor = false;
 
   if (target.sourceUrl && candidate.sourceUrl && target.sourceUrl === candidate.sourceUrl) {
     score += 90;
+    hasAnchor = true;
     reasons.push("same source article");
-  } else if (targetHost && candidateHost && targetHost === candidateHost) {
-    score += 18;
-    reasons.push(`same publisher: ${targetHost}`);
+  } else if (targetHost && candidateHost && targetHost === candidateHost && days !== null && days <= 2) {
+    score += 10;
+    contextReasons.push(`same publisher: ${targetHost}`);
   }
 
   const sharedActors = [...actorTokens(target)].filter((token) => actorTokens(candidate).has(token));
   if (sharedActors.length) {
-    score += Math.min(45, sharedActors.length * 18);
+    score += Math.min(54, sharedActors.length * 36);
+    hasAnchor = true;
     reasons.push(`shared actor: ${sharedActors.slice(0, 3).join(", ")}`);
   }
 
   if (target.country && candidate.country && target.country === candidate.country) {
-    score += 22;
-    reasons.push(`same country: ${target.country}`);
+    score += 8;
+    contextReasons.push(`same country: ${target.country}`);
   }
 
-  if (target.continent && candidate.continent && target.continent === candidate.continent) score += 8;
+  if (target.continent && candidate.continent && target.continent === candidate.continent) score += 2;
 
   if (target.theme && candidate.theme && target.theme === candidate.theme) {
-    score += 14;
-    reasons.push(`same theme: ${target.theme}`);
+    score += 6;
+    contextReasons.push(`same theme: ${target.theme}`);
   }
 
-  if (target.quadClass !== null && target.quadClass === candidate.quadClass) score += 8;
+  if (target.quadClass !== null && target.quadClass === candidate.quadClass) score += 3;
 
-  const days = daysApart(target, candidate);
   if (days !== null) {
     if (days <= 1) {
-      score += 16;
-      reasons.push("same 24h cycle");
-    } else if (days <= 7) {
-      score += 11;
-      reasons.push(`${Math.round(days)} days apart`);
-    } else if (days <= 30) {
       score += 4;
+      contextReasons.push("same 24h cycle");
+    } else if (days <= 7) {
+      score += 2;
+      contextReasons.push(`${Math.round(days)} days apart`);
+    } else if (days <= 30) {
+      score += 1;
     }
   }
 
   const km = distanceKm(target, candidate);
   if (km !== null) {
-    if (km <= 50) {
-      score += 18;
-      reasons.push("nearby location");
-    } else if (km <= 300) {
-      score += 10;
-      reasons.push(`${Math.round(km)} km away`);
-    } else if (km <= 1000) {
-      score += 5;
+    if (km <= 50 && (days === null || days <= 7)) {
+      score += 26;
+      hasAnchor = true;
+      reasons.push(`nearby location: ${Math.round(km)} km`);
+    } else if (km <= 300 && days !== null && days <= 2) {
+      score += 8;
+      contextReasons.push(`${Math.round(km)} km away`);
     }
   }
 
   score += Math.min(10, Math.log10((candidate.numMentions || 0) + 1) * 4);
 
-  if (score < 32 || !reasons.length) return null;
-  return { event: candidate, score, reasons };
+  if (!hasAnchor || score < RELATED_SIGNAL_MIN_SCORE || !reasons.length) return null;
+  return { event: candidate, score, reasons: [...reasons, ...contextReasons].slice(0, 4) };
 }
 
 function findRelatedSignals(target, events, limit = 6) {
@@ -497,7 +548,7 @@ function IconExternalLink() {
 
 // ── Top bar ───────────────────────────────────────────────────────────────────
 
-function TopBar({ globalHopeAverage, eventCount, activeView, onViewChange }) {
+function TopBar({ globalHopeAverage, eventCount, activeView, onViewChange, dataSource }) {
   return (
     <header className="topbar" role="banner">
       <span className="topbar-brand">
@@ -513,7 +564,7 @@ function TopBar({ globalHopeAverage, eventCount, activeView, onViewChange }) {
             className={"view-tab" + (activeView === "queue" ? " on" : "")}
             onClick={() => onViewChange("queue")}
           >
-            Assignment Queue
+            Review List
           </button>
           <button
             type="button"
@@ -522,30 +573,21 @@ function TopBar({ globalHopeAverage, eventCount, activeView, onViewChange }) {
             className={"view-tab" + (activeView === "events" ? " on" : "")}
             onClick={() => onViewChange("events")}
           >
-            Events
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeView === "risk"}
-            className={"view-tab" + (activeView === "risk" ? " on" : "")}
-            onClick={() => onViewChange("risk")}
-          >
-            Risk Windows
+            Map
           </button>
         </div>
-        <div className="live-badge" role="status" aria-label="Live data feed">
+        <div className="live-badge" role="status" aria-label={dataSource === "live" ? "Live GDELT feed loaded" : "Saved demo data loaded"}>
           <span className="live-dot" aria-hidden="true" />
-          LIVE
+          {dataSource === "live" ? "LIVE" : "DEMO"}
         </div>
         {eventCount > 0 && (
           <div className="topbar-stats">
             <span className="stat-pill hope">
               <span className="stat-dot hope" aria-hidden="true" />
-              Assignment Triage Score: {globalHopeAverage.toFixed(1)}/100
+              Average signal: {globalHopeAverage.toFixed(1)}/100
             </span>
             <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--text-sec)", marginLeft: 2 }}>
-              ({eventCount.toLocaleString()} events clustered)
+              ({eventCount.toLocaleString()} rows)
             </span>
           </div>
         )}
@@ -711,6 +753,7 @@ function FilterPanel({ filters, onFilter, filteredEvents, selectedEvent, onSelec
   const setDays      = (d) => onFilter({ ...filters, days: d });
   const setContinent = (c) => onFilter({ ...filters, continent: c });
   const setCategory  = (cat) => onFilter({ ...filters, category: cat });
+  const setSource    = (source) => onFilter({ ...filters, source });
 
   return (
     <aside className={`filter-panel${open ? "" : " collapsed"}`} aria-label="Event filters">
@@ -729,6 +772,20 @@ function FilterPanel({ filters, onFilter, filteredEvents, selectedEvent, onSelec
       </div>
 
       <div className="filter-body">
+        <div className="filter-group">
+          <div className="filter-group-label">Data</div>
+          <div className="chip-row">
+            {DATA_SOURCES.map((source) => (
+              <button
+                key={source.value}
+                className={`chip${filters.source === source.value ? " on" : ""}`}
+                onClick={() => setSource(source.value)}
+                aria-pressed={filters.source === source.value}
+              >{source.label}</button>
+            ))}
+          </div>
+        </div>
+
         <div className="filter-group">
           <div className="filter-group-label">Range</div>
           <div className="chip-row">
@@ -902,9 +959,9 @@ function LinkedSignals({ event, events, onSelectEvent }) {
   return (
     <div className="linked-signals">
       <div className="linked-signals-head">
-        <div>
-          <div className="linked-signals-label">Linked Signals</div>
-          <div className="linked-signals-sub">Same actors, source, location, theme, or timing</div>
+          <div>
+            <div className="linked-signals-label">Linked Signals</div>
+            <div className="linked-signals-sub">Only rows with a shared source, actor, or nearby same-week location</div>
         </div>
         <span className="linked-signals-count">{related.length}</span>
       </div>
@@ -924,7 +981,7 @@ function LinkedSignals({ event, events, onSelectEvent }) {
               <span className="linked-signal-main">
                 <span className="linked-signal-title">{eventTitle(rel)}</span>
                 <span className="linked-signal-meta">{rel.date} · {rel.location || rel.country}</span>
-                <span className="linked-signal-reason">{signal.reasons[0]}</span>
+                <span className="linked-signal-reason">{signal.reasons.join(" · ")}</span>
               </span>
               <span className="linked-signal-score">{Math.round(signal.score)}</span>
             </button>
@@ -935,7 +992,7 @@ function LinkedSignals({ event, events, onSelectEvent }) {
   );
 }
 
-function IntelPacket({ event }) {
+function IntelPacket({ event, dataSource }) {
   const [probe, setProbe] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -947,7 +1004,7 @@ function IntelPacket({ event }) {
     setError("");
     setLoading(true);
 
-    fetch(`/api/probe?id=${encodeURIComponent(event.id)}`, { signal: ctrl.signal })
+    fetch(`/api/probe?id=${encodeURIComponent(event.id)}&source=${dataSource ?? "static"}`, { signal: ctrl.signal })
       .then((r) => r.json())
       .then((data) => {
         if (data.error) throw new Error(data.error);
@@ -1040,13 +1097,14 @@ function IntelPacket({ event }) {
                   <span>{impact.label}</span>
                   <span>{impact.score}</span>
                 </div>
-                <div className="impact-track" aria-hidden="true">
-                  <span
-                    className={`impact-fill ${impact.direction}`}
-                    style={{ width: `${Math.max(4, Math.min(100, impact.score))}%` }}
-                  />
-                </div>
-              </div>
+	                <div className="impact-track" aria-hidden="true">
+	                  <span
+	                    className={`impact-fill ${impact.direction}`}
+	                    style={{ width: `${Math.max(4, Math.min(100, impact.score))}%` }}
+	                  />
+	                </div>
+	                <div className="intel-muted" style={{ marginTop: 6 }}>{impact.rationale}</div>
+	              </div>
             ))}
           </div>
         </div>
@@ -1089,7 +1147,7 @@ function IntelPacket({ event }) {
 
 // ── Event detail ──────────────────────────────────────────────────────────────
 
-function EventDetail({ event, events, onClose, onSelectEvent, apiKey, aiReady }) {
+function EventDetail({ event, events, onClose, onSelectEvent, apiKey, aiReady, dataSource }) {
   useEffect(() => {
     const onKey = (e) => { if (e.key === "Escape") onClose(); };
     document.addEventListener("keydown", onKey);
@@ -1110,7 +1168,10 @@ function EventDetail({ event, events, onClose, onSelectEvent, apiKey, aiReady })
 
         <div className="detail-body">
           <div className={`detail-cat ${event.theme}`} style={{ color: THEME_COLORS[event.theme] || "#4F46E5" }}>
-            {event.theme} · {event.quadLabel}
+            Topic estimate: {eventTopicLabel(event)} · Raw GDELT: {event.quadLabel}
+          </div>
+          <div className="intel-muted" style={{ marginTop: -8, marginBottom: 14 }}>
+            {gdeltClassExplanation(event)}
           </div>
           <h2 className="detail-title">{title}</h2>
 
@@ -1207,7 +1268,7 @@ function EventDetail({ event, events, onClose, onSelectEvent, apiKey, aiReady })
             </a>
           )}
 
-          <IntelPacket event={event} />
+          <IntelPacket event={event} dataSource={dataSource} />
 
           <LinkedSignals event={event} events={events} onSelectEvent={onSelectEvent} />
 
@@ -1480,17 +1541,18 @@ function QueueFilterBar({ filters, onFilter, loading, resultCount, decisionCount
   const setDays = (days) => onFilter({ ...filters, days });
   const setContinent = (continent) => onFilter({ ...filters, continent });
   const setCategory = (category) => onFilter({ ...filters, category });
+  const setSource = (source) => onFilter({ ...filters, source });
 
   return (
     <div className="queue-filter-bar" aria-label="Assignment queue filters">
+      <QueueFilterGroup label="Data" options={DATA_SOURCES.map((source) => source.label)} value={DATA_SOURCES.find((source) => source.value === filters.source)?.label ?? "Saved demo"} onChange={(label) => setSource(DATA_SOURCES.find((source) => source.label === label)?.value ?? "static")} />
       <QueueFilterGroup label="Range" options={DAY_OPTIONS} value={filters.days} onChange={setDays} />
       <QueueFilterGroup label="Region" options={CONTINENTS} value={filters.continent} onChange={setContinent} />
-      <QueueFilterGroup label="Theme" options={CATEGORIES} value={filters.category} onChange={setCategory} colorize />
-      <QueueModeGroup value={queueMode} onChange={onQueueMode} />
+      <QueueFilterGroup label="Topic" options={CATEGORIES} value={filters.category} onChange={setCategory} colorize />
       <div className="queue-export-box">
-        <span>{loading ? "loading" : `${resultCount} shown`} · {decisionCount} local notes</span>
+        <span>{loading ? "loading" : `${resultCount} best picks`} · {decisionCount} saved choices</span>
         <button type="button" onClick={onExport} disabled={decisionCount === 0}>
-          Export notes
+          Download choices
         </button>
       </div>
     </div>
@@ -1690,7 +1752,7 @@ function GlobalRiskQueue({ events, loading, selectedEvent, onFocusEvent, onOpenM
     setQueueLoading(true);
     setQueueError("");
 
-    fetch(`/api/review-queue?days=${filters.days}&limit=80&mode=${queueMode}`, { signal: ctrl.signal })
+    fetch(`/api/review-queue?days=${filters.days}&limit=80&mode=${queueMode}&source=${filters.source ?? "static"}`, { signal: ctrl.signal })
       .then((r) => r.json())
       .then((data) => {
         if (data.error) throw new Error(data.error);
@@ -1709,7 +1771,7 @@ function GlobalRiskQueue({ events, loading, selectedEvent, onFocusEvent, onOpenM
       });
 
     return () => ctrl.abort();
-  }, [filters.days, queueMode]);
+  }, [filters.days, filters.source, queueMode]);
 
   const rankedEvents = useMemo(() => {
     const packets = Array.isArray(reviewQueue)
@@ -1729,7 +1791,7 @@ function GlobalRiskQueue({ events, loading, selectedEvent, onFocusEvent, onOpenM
         if (filters.category !== "All" && item.event.theme !== filters.category) return false;
         return true;
       })
-      .slice(0, 50);
+      .slice(0, 10);
   }, [events, filters.continent, filters.category, reviewQueue]);
 
   const selected = selectedEvent
@@ -1786,14 +1848,14 @@ function GlobalRiskQueue({ events, loading, selectedEvent, onFocusEvent, onOpenM
     <section className="queue-view" aria-label="Assignment queue">
       <div className="queue-hero">
         <div>
-          <div className="risk-kicker">OSINT watch workflow</div>
-          <h1>Assignment queue for deeper investigation</h1>
-          <p>Start at rank #1, inspect the evidence packet, then decide whether this public event should be assigned, watched, or dismissed.</p>
+          <div className="risk-kicker">Simple review workflow</div>
+          <h1>Pick a news signal to check</h1>
+          <p>The app sorts noisy public news rows. Your job is simple: read one, open the source, then choose Important, Watch, or Ignore.</p>
         </div>
         <div className="flow-strip" aria-label="Assignment workflow">
-          <span>1 Rank</span>
-          <span>2 Check evidence</span>
-          <span>3 Assign / Watch / Dismiss</span>
+          <span>1 Pick</span>
+          <span>2 Check source</span>
+          <span>3 Choose</span>
         </div>
       </div>
 
@@ -1808,23 +1870,17 @@ function GlobalRiskQueue({ events, loading, selectedEvent, onFocusEvent, onOpenM
         onQueueMode={setQueueMode}
       />
 
-      {(queueMeta || queueError) && (
+      {queueError && (
         <div className={`queue-strategy-strip${queueError ? " error" : ""}`}>
-          {queueError ? queueError : (
-            <>
-              <strong>{QUEUE_MODES.find((mode) => mode.value === queueMode)?.label ?? "Priority"}</strong>
-              <span>{queueMeta.strategy?.ranking}</span>
-              <em>{queueMeta.counts?.sourceCheckedHumanLabels ?? 0} source-checked human labels protected</em>
-            </>
-          )}
+          {queueError}
         </div>
       )}
 
       <div className="queue-grid">
         <div className="queue-list-panel">
           <div className="risk-section-head">
-            <span>Active-learning review queue</span>
-            <span>{loading || queueLoading ? "loading" : `${rankedEvents.length} signals`}</span>
+            <span>Top things to check</span>
+            <span>{loading || queueLoading ? "loading" : `${rankedEvents.length} shown`}</span>
           </div>
           <div className="queue-list">
             {rankedEvents.length === 0 && (
@@ -1843,17 +1899,17 @@ function GlobalRiskQueue({ events, loading, selectedEvent, onFocusEvent, onOpenM
                 >
                   <span className="queue-rank">#{item.rank ?? index + 1}</span>
                   <span className="queue-main">
-                    <strong>{eventTitle(item.event)}</strong>
+                    <strong>{simpleEventTitle(item.event)}</strong>
                     <em>{item.event.location || item.event.country} · {item.event.date}</em>
-                    <em>{item.activeLearning?.reasons?.[0] ?? "Active-learning candidate"}</em>
+                    <em>{item.surfaceExplanation?.label ?? "Needs source checking"}</em>
                     {rowDecision && <em>Local decision: {rowDecision.decisionLabel}</em>}
                   </span>
                   <span className={`recommendation-pill ${item.recommendation}`}>
                     {RECOMMENDATION_META[item.recommendation].label}
                   </span>
                   <span className="queue-scores">
-                    <b>{item.queueScore}</b>
-                    <small>{item.uncertainty.level} uncertainty</small>
+                    <b>{item.priority}</b>
+                    <small>signal score</small>
                   </span>
                 </button>
               );
@@ -1866,64 +1922,50 @@ function GlobalRiskQueue({ events, loading, selectedEvent, onFocusEvent, onOpenM
             <>
               <div className="brief-topline">
                 <div>
-                  <div className="risk-kicker">Assignment packet</div>
-                  <h2>{eventTitle(selected.event)}</h2>
+                  <div className="risk-kicker">Selected signal</div>
+                  <h2>{simpleEventTitle(selected.event)}</h2>
                   <p>{selected.event.location || selected.event.country} · {selected.event.date}</p>
                 </div>
                 <div className={`priority-badge recommendation-badge ${selected.recommendation}`}>
-                  <span>Recommendation</span>
+                  <span>Suggested choice</span>
                   <strong>{RECOMMENDATION_META[selected.recommendation].label}</strong>
                   <small>{selected.priority}/100</small>
                 </div>
               </div>
 
               <p className="assignment-reco-copy">
-                {RECOMMENDATION_META[selected.recommendation].description} This recommendation is a ranking aid, not verified truth.
+                {RECOMMENDATION_META[selected.recommendation].description} This is a helper guess, not verified truth.
               </p>
 
               <div className="active-learning-box">
-                <div className="brief-label">Active learning</div>
-                <strong>{selected.queueScore}/100 review value</strong>
-                <p>{selected.activeLearning?.reasons?.[0] ?? "This row is useful for human source-checking."}</p>
+                <div className="brief-label">What the app thinks</div>
+                <strong>{selected.priority}/100 signal score</strong>
+                <p>
+                  {selected.surfaceExplanation?.label ?? "This may be useful."} Higher scores mean "check sooner," not "definitely true."
+                </p>
                 <div className="component-row">
-                  <span>Priority {selected.activeLearning?.components?.priority ?? selected.priority}</span>
-                  <span>Uncertainty {selected.activeLearning?.components?.uncertainty ?? selected.uncertainty.score}</span>
-                  <span>Threshold {selected.activeLearning?.components?.threshold ?? 0}</span>
-                  <span>Coverage {selected.activeLearning?.components?.coverage ?? 0}</span>
+                  <span>{selected.event.theme}</span>
+                  <span>{selected.uncertainty.level} uncertainty</span>
+                  <span>{selected.evidenceGrade} evidence</span>
                 </div>
-              </div>
-
-              <ReviewerCopilotPanel event={selected.event} apiKey={apiKey} aiReady={aiReady} />
-
-              <div className="brief-scores">
-                <ScoreBar label="Direct danger" value={selected.danger} tone="danger" />
-                <ScoreBar label="Ripple potential" value={selected.ripple} tone="ripple" />
               </div>
 
               <div className="assignment-summary">
                 <div>
-                  <span>Evidence grade</span>
+                  <span>Evidence</span>
                   <strong className={`evidence-grade ${selected.evidenceGrade}`}>{selected.evidenceGrade}</strong>
                 </div>
                 <div>
                   <span>Uncertainty</span>
-                  <strong className={`uncertainty-${selected.uncertainty.level}`}>{selected.uncertainty.level} · {selected.uncertainty.score}</strong>
+                  <strong className={`uncertainty-${selected.uncertainty.level}`}>{selected.uncertainty.level}</strong>
                 </div>
                 <div>
                   <span>Source</span>
                   <strong>{sourceHost(selected.event.sourceUrl) || "none"}</strong>
                 </div>
                 <div>
-                  <span>Source rows</span>
-                  <strong>{Number(selected.event.surfaceClusterSize ?? 1).toLocaleString()}</strong>
-                </div>
-                <div>
-                  <span>Incident cluster</span>
-                  <strong>{Number(selected.event.eventClusterSize ?? 1).toLocaleString()} · {selected.event.eventClusterRole ?? "representative"}</strong>
-                </div>
-                <div>
-                  <span>Model probability</span>
-                  <strong>{Number.isFinite(selected.event.surfaceModelProbability) ? `${Math.round(selected.event.surfaceModelProbability * 100)}%` : "n/a"}</strong>
+                  <span>Mentions</span>
+                  <strong>{Number(selected.event.numMentions ?? 0).toLocaleString()}</strong>
                 </div>
               </div>
 
@@ -1935,45 +1977,32 @@ function GlobalRiskQueue({ events, loading, selectedEvent, onFocusEvent, onOpenM
               </div>
 
               <div className="brief-section">
-                <div className="brief-label">Why surfaced</div>
-                <p className="quiet-note">{selected.surfaceExplanation.summary}</p>
+                <div className="brief-label">Why it is on the list</div>
                 <ul className="why-list">
-                  {selected.reasonCodes.map((reason) => <li key={reason}>{reason}</li>)}
+                  {selected.reasonCodes.slice(0, 4).map((reason) => <li key={reason}>{reason}</li>)}
                 </ul>
               </div>
 
               <div className="brief-section">
-                <div className="brief-label">Uncertainty warnings</div>
+                <div className="brief-label">Check before trusting</div>
                 {selected.uncertainty.warnings.length > 0 ? (
                   <ul className="warning-list">
-                    {selected.uncertainty.warnings.map((warning) => <li key={warning}>{warning}</li>)}
+                    {selected.uncertainty.warnings.slice(0, 3).map((warning) => <li key={warning}>{simpleWarningText(warning)}</li>)}
                   </ul>
                 ) : (
-                  <p className="quiet-note">No major row caveats from the current metadata. The source still needs human checking before becoming ground truth.</p>
+                  <p className="quiet-note">Open the source and check that the event, place, date, and actors match this row.</p>
                 )}
-                {!!selected.uncertainty.confidenceDrivers?.length && (
-                  <div className="confidence-driver-row">
-                    {selected.uncertainty.confidenceDrivers.slice(0, 3).map((driver) => <span key={driver}>{driver}</span>)}
-                  </div>
-                )}
-              </div>
-
-              <div className="brief-section">
-                <div className="brief-label">Incident cluster</div>
-                <ul className="why-list">
-                  {(selected.event.eventClusterReasons ?? ["No likely same-incident rows found."]).map((reason) => <li key={reason}>{reason}</li>)}
-                </ul>
               </div>
 
               <div className="brief-facts">
-                <div><span>Theme</span><strong>{selected.event.theme}</strong></div>
+                <div><span>Topic</span><strong>{selected.event.theme}</strong></div>
                 <div><span>Goldstein</span><strong>{Number.isFinite(selected.event.goldstein) ? selected.event.goldstein.toFixed(1) : "n/a"}</strong></div>
                 <div><span>Tone</span><strong>{Number.isFinite(selected.event.avgTone) ? selected.event.avgTone.toFixed(2) : "n/a"}</strong></div>
                 <div><span>Mentions</span><strong>{Number(selected.event.numMentions ?? 0).toLocaleString()}</strong></div>
               </div>
 
               <div className="decision-box">
-                <div className="brief-label">Analyst decision</div>
+                <div className="brief-label">Your choice</div>
                 <div className="decision-row">
                   {DECISION_OPTIONS.map((option) => (
                     <button
@@ -1988,8 +2017,8 @@ function GlobalRiskQueue({ events, loading, selectedEvent, onFocusEvent, onOpenM
                 </div>
                 <p>
                   {selectedDecision
-                    ? `Marked as ${selectedDecision.decisionLabel} at ${new Date(selectedDecision.decidedAt).toLocaleString()}. This is a local prototype note, not source-checked ground truth.`
-                    : "No local decision yet. This tri-state choice is the future analyst label, but it does not modify eval files in this V1."}
+                    ? `Marked as ${selectedDecision.decisionLabel} at ${new Date(selectedDecision.decidedAt).toLocaleString()}. This is saved only in your browser.`
+                    : "Choose after checking the source. This does not change the real eval labels."}
                 </p>
               </div>
 
@@ -2054,13 +2083,14 @@ function App() {
     return "queue";
   });
   const [events,   setEvents]   = useState([]);
-  const [filters,  setFilters]  = useState({ days: 7, continent: "All", category: "All" });
+  const [filters,  setFilters]  = useState({ days: 7, continent: "All", category: "All", source: "static" });
   const [selected, setSelected] = useState(null);
   const [loading,  setLoading]  = useState(false);
   const [slowLoad, setSlowLoad] = useState(false);
   const [error,    setError]    = useState("");
   const [apiKey,   setApiKey]   = useState(() => sessionStorage.getItem("hope_api_key") ?? "");
   const [aiReady,  setAiReady]  = useState(false);
+  const [liveRefreshTick, setLiveRefreshTick] = useState(0);
 
   // Check once whether the server has an API key configured
   useEffect(() => {
@@ -2088,7 +2118,7 @@ function App() {
 
     const slowTimer = setTimeout(() => { if (!cancelled) setSlowLoad(true); }, 5_000);
 
-    fetch(`/api/events?days=${filters.days}`)
+    fetch(`/api/events?days=${filters.days}&source=${filters.source}`)
       .then((r) => r.json())
       .then((data) => {
         if (cancelled) return;
@@ -2102,7 +2132,13 @@ function App() {
       });
 
     return () => { cancelled = true; clearTimeout(slowTimer); };
-  }, [filters.days]);
+  }, [filters.days, filters.source, liveRefreshTick]);
+
+  useEffect(() => {
+    if (filters.source !== "live") return undefined;
+    const timer = setInterval(() => setLiveRefreshTick((tick) => tick + 1), 5 * 60 * 1000);
+    return () => clearInterval(timer);
+  }, [filters.source]);
 
   const filteredEvents = useMemo(() => events
     .filter((e) => {
@@ -2142,6 +2178,7 @@ function App() {
     setView(nextView);
     const hash = nextView === "events" ? "#events" : nextView === "risk" ? "#risk" : "#queue";
     window.history.replaceState(null, "", hash);
+    setSelected(null);
   }, []);
 
   return (
@@ -2151,6 +2188,7 @@ function App() {
         eventCount={eventCount}
         activeView={view}
         onViewChange={handleViewChange}
+        dataSource={filters.source}
       />
 
       <main className="app-main">
@@ -2160,7 +2198,10 @@ function App() {
             loading={loading}
             selectedEvent={selected}
             onFocusEvent={handleFocusEvent}
-            onOpenMap={() => handleViewChange("events")}
+            onOpenMap={() => {
+              setView("events");
+              window.history.replaceState(null, "", "#events");
+            }}
             filters={filters}
             onFilter={handleFilter}
             apiKey={apiKey}
@@ -2190,6 +2231,7 @@ function App() {
                 onSelectEvent={handleSelectEvent}
                 apiKey={apiKey}
                 aiReady={aiReady}
+                dataSource={filters.source}
               />
             )}
           </>

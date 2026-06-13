@@ -238,6 +238,7 @@ const COL = {
   SQLDATE: 1,
   ACTOR1NAME: 6,
   ACTOR2NAME: 16,
+  EVENTCODE: 26,
   QUADCLASS: 29,
   GOLDSTEINSCALE: 30,
   NUMMENTIONS: 31,
@@ -321,6 +322,7 @@ const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
 const SOURCE_FETCH_TIMEOUT = 5_000;
 const SOURCE_TEXT_LIMIT = 3_500;
 const RELATED_SIGNAL_LIMIT = 12;
+const RELATED_SIGNAL_MIN_SCORE = 42;
 const DAY_MS = 86_400_000;
 const REVIEW_ASSIGN_THRESHOLD = 72;
 const REVIEW_WATCH_THRESHOLD = 52;
@@ -397,6 +399,158 @@ function getSeverity(g: number | null): GdeltEvent["severity"] {
 function getRadius(g: number | null): number {
   if (g === null) return 2;
   return Math.min(7, Math.max(2, 2 + Math.abs(g) * 0.5));
+}
+
+const LOCAL_PUBLIC_SAFETY_TERMS = [
+  "shark-attack", "shark attack", "attacked-while-fishing", "attacked while fishing",
+  "dog-attack", "dog attack", "bear-attack", "bear attack", "crocodile", "alligator",
+  "snakebite", "drowning", "rip-current", "rip current", "wildfire", "house-fire",
+  "house fire", "dormitory-fire", "dormitory fire", "car-crash", "car crash",
+  "plane-crash", "plane crash", "train-crash", "train crash", "fatal-crash",
+  "fatal crash", "accident",
+];
+
+const SECURITY_SOURCE_TERMS = [
+  "al qaida", "al qaeda", "al-qaida", "al-qaeda", "terror", "terrorist", "militant",
+  "militia", "jihad", "hamas", "hezbollah", "isis", "islamic state", "taliban",
+  "war crime", "armed group", "extremist", "radicalized", "bosnia",
+];
+
+const POLITICAL_SOURCE_TERMS = [
+  "candidate", "congressional", "congress", "senate", "election", "campaign",
+  "democrat", "republican", "minister", "parliament", "party", "government",
+];
+
+function sourceTextForEvent(url: string | undefined): string {
+  if (!url) return "";
+  try {
+    const parsed = new URL(url);
+    return `${parsed.hostname} ${parsed.pathname}`.toLowerCase().replace(/[-_]+/g, " ");
+  } catch {
+    return String(url).toLowerCase().replace(/[-_]+/g, " ");
+  }
+}
+
+function hasLocalPublicSafetyPattern(event: Pick<GdeltEvent, "sourceUrl" | "actor1" | "actor2">): boolean {
+  const text = `${sourceTextForEvent(event.sourceUrl)} ${event.actor1} ${event.actor2}`.toLowerCase();
+  const strategic = hasStrategicActorText(event.actor1, event.actor2);
+  return !strategic && LOCAL_PUBLIC_SAFETY_TERMS.some((term) => text.includes(term));
+}
+
+function classifyTheme(
+  eventCode: string,
+  actor1: string,
+  actor2: string,
+  quadClass: number | null,
+  sourceUrl = ""
+): NonNullable<GdeltEvent["theme"]> {
+  const text = `${actor1} ${actor2}`.toUpperCase();
+  const sourceText = sourceTextForEvent(sourceUrl);
+  const combinedText = `${sourceText} ${text.toLowerCase()}`;
+
+  if (LOCAL_PUBLIC_SAFETY_TERMS.some((term) => sourceText.includes(term))) return "Humanitarian";
+  if (SECURITY_SOURCE_TERMS.some((term) => combinedText.includes(term))) return "Conflict";
+  if (POLITICAL_SOURCE_TERMS.some((term) => combinedText.includes(term)) && quadClass !== 4) return "Diplomacy";
+
+  const envKeywords = ["CLIMATE", "GREEN", "ENERGY", "ENVIRONMENT", "POLLUTION", "WIND", "SOLAR", "GAS", "OIL", "CARBON", "WATER"];
+  if (envKeywords.some((kw) => text.includes(kw))) return "Environment";
+
+  const techKeywords = ["UNIVERSITY", "SCIENTIST", "RESEARCH", "NASA", "TECH", "AI", "SEMICONDUCTOR", "CHIP", "SPACE", "SOFTWARE"];
+  if (techKeywords.some((kw) => text.includes(kw)) && !POLITICAL_SOURCE_TERMS.some((term) => combinedText.includes(term))) return "Science";
+
+  const humKeywords = ["REFUGEE", "HUMAN RIGHTS", "AID", "RED CROSS", "UNHCR", "DISASTER", "FLOOD", "EARTHQUAKE", "PROTESTER", "HUNGER"];
+  if (eventCode.startsWith("07") || eventCode.startsWith("08") || humKeywords.some((kw) => text.includes(kw))) return "Humanitarian";
+
+  const econKeywords = ["BANK", "TRADE", "MARKET", "ECONOMY", "IMF", "WTO", "SANCTION", "BUSINESS", "TARIFF", "FINANCE", "TREASURY"];
+  if (eventCode.startsWith("06") || econKeywords.some((kw) => text.includes(kw))) return "Econ";
+
+  const conflictCode =
+    eventCode.startsWith("11") || eventCode.startsWith("12") ||
+    eventCode.startsWith("13") || eventCode.startsWith("14") ||
+    eventCode.startsWith("15") || eventCode.startsWith("16") ||
+    eventCode.startsWith("17") || eventCode.startsWith("18") ||
+    eventCode.startsWith("19") || eventCode.startsWith("20");
+  if (conflictCode || quadClass === 3 || quadClass === 4) return "Conflict";
+
+  return "Diplomacy";
+}
+
+function calculateHopeScore(
+  goldstein: number | null,
+  avgTone: number | null,
+  theme: NonNullable<GdeltEvent["theme"]>
+): number {
+  let score = 50;
+  if (goldstein !== null) score += goldstein * 2.5;
+  if (avgTone !== null) score += avgTone * 1.5;
+  if (theme === "Science") score += 12;
+  if (theme === "Humanitarian") score += 8;
+  if (theme === "Conflict") score -= 15;
+  if ((theme === "Diplomacy" || theme === "Econ" || theme === "Environment") && (goldstein ?? 0) > 0) score += 6;
+  return Math.round(clamp(score, 0, 100));
+}
+
+function hasStrategicActorText(actor1: string, actor2: string): boolean {
+  const text = `${actor1} ${actor2}`.toUpperCase();
+  return [
+    "US", "UNITED STATES", "RUSSIA", "UKRAINE", "NATO", "IRAN", "ISRAEL",
+    "GAZA", "CHINA", "TAIWAN", "PAKISTAN", "INDIA", "TURKEY", "SYRIA",
+  ].some((token) => text.includes(token));
+}
+
+function liveSurfaceMetadata(event: GdeltEvent): Pick<GdeltEvent, "surfaceScore" | "surfaceBand" | "surfaceReasons" | "surfaceRadius" | "surfaceModelProbability"> {
+  const reasons: string[] = [];
+  const mentions = Number(event.numMentions ?? 0);
+  const absGoldstein = Math.abs(Number(event.goldstein ?? 0));
+  const negativeTone = Number.isFinite(event.avgTone) ? Math.max(0, -Number(event.avgTone)) : 0;
+  const localPublicSafety = hasLocalPublicSafetyPattern(event);
+  let score = 16;
+
+  if (event.severity === "critical") {
+    score += 28;
+    reasons.push("critical severity");
+  } else if (event.severity === "high") {
+    score += 20;
+    reasons.push("high severity");
+  } else if (event.severity === "medium") {
+    score += 11;
+  }
+
+  if (event.quadClass === 4) {
+    score += 18;
+    reasons.push("material conflict signal");
+  } else if (event.quadClass === 3) {
+    score += 10;
+    reasons.push("verbal conflict signal");
+  } else if (event.quadClass === 1 || event.quadClass === 2) {
+    score += 6;
+    reasons.push("cooperation signal");
+  }
+
+  score += Math.min(16, Math.log1p(mentions) * 4);
+  score += Math.min(12, absGoldstein * 1.2);
+  score += Math.min(8, negativeTone);
+
+  if (hasStrategicActorText(event.actor1, event.actor2)) {
+    score += 12;
+    reasons.push("strategic actor or theater");
+  }
+  if (["Conflict", "Humanitarian", "Econ"].includes(event.theme ?? "")) score += 5;
+  if (mentions <= 1) reasons.push("penalty: single-mention weak signal");
+  if (event.actor1 === "Unknown" || event.actor2 === "Unknown") reasons.push("penalty: generic GDELT extraction");
+  if (localPublicSafety) {
+    score -= 42;
+    reasons.push("penalty: local public-safety/accident pattern");
+  }
+
+  const surfaceScore = Math.round(clamp(score, 0, 100));
+  return {
+    surfaceScore,
+    surfaceBand: surfaceBandForScore(surfaceScore),
+    surfaceReasons: reasons.length ? reasons : ["GDELT/model signal only"],
+    surfaceRadius: Math.max(3, Math.min(11, Math.round(surfaceScore / 10))),
+    surfaceModelProbability: Number((surfaceScore / 100).toFixed(4)),
+  };
 }
 
 function fmtDate(s: string): string {
@@ -697,7 +851,7 @@ function fallbackSurfaceExplanation(event: GdeltEvent): SurfaceExplanation {
     Number(event.numMentions ?? 0) <= 1 ? "Single-mention row; corroboration is weak." : null,
     event.actor1 === "Unknown" || event.actor2 === "Unknown" ? "Actor extraction is missing or generic." : null,
     ...penalties
-      .filter((penalty) => /source-mismatch|background|local crime|entertainment|history|opinion/i.test(penalty))
+      .filter((penalty) => /source-mismatch|background|local crime|public-safety|accident|entertainment|history|opinion/i.test(penalty))
       .map((penalty) => `Caveat: ${penalty}.`),
   ].filter((item): item is string => Boolean(item));
 
@@ -749,7 +903,7 @@ function fallbackEventUncertainty(event: GdeltEvent): EventUncertainty {
     score += 13;
     warnings.push("Actor extraction is missing or generic.");
   }
-  if (/source-mismatch|background|local crime|entertainment|history|opinion/.test(reasons)) {
+  if (/source-mismatch|background|local crime|public-safety|accident|entertainment|history|opinion/.test(reasons)) {
     score += 17;
     warnings.push("Surfacing policy found source-quality or row-quality caveats.");
   }
@@ -1077,73 +1231,76 @@ function relationScore(target: GdeltEvent, candidate: GdeltEvent): RelatedSignal
 
   let score = 0;
   const reasons: string[] = [];
+  const contextReasons: string[] = [];
   const targetSource = hostFromUrl(target.sourceUrl);
   const candidateSource = hostFromUrl(candidate.sourceUrl);
+  const days = daysApart(target, candidate);
+  let hasAnchor = false;
 
   if (target.sourceUrl && candidate.sourceUrl && target.sourceUrl === candidate.sourceUrl) {
     score += 90;
+    hasAnchor = true;
     reasons.push("same source article");
-  } else if (targetSource && candidateSource && targetSource === candidateSource) {
-    score += 18;
-    reasons.push(`same publisher (${targetSource})`);
+  } else if (targetSource && candidateSource && targetSource === candidateSource && days !== null && days <= 2) {
+    score += 10;
+    contextReasons.push(`same publisher (${targetSource})`);
   }
 
   const targetActors = actorTokens(target);
   const candidateActors = actorTokens(candidate);
   const sharedActors = [...targetActors].filter((token) => candidateActors.has(token));
   if (sharedActors.length > 0) {
-    score += Math.min(45, sharedActors.length * 18);
+    score += Math.min(54, sharedActors.length * 36);
+    hasAnchor = true;
     reasons.push(`shared actor/entity: ${sharedActors.slice(0, 3).join(", ")}`);
   }
 
   if (target.country && candidate.country && target.country === candidate.country) {
-    score += 22;
-    reasons.push(`same country (${target.country})`);
+    score += 8;
+    contextReasons.push(`same country (${target.country})`);
   }
 
   if (target.continent && candidate.continent && target.continent === candidate.continent) {
-    score += 8;
+    score += 2;
   }
 
   if (target.theme && candidate.theme && target.theme === candidate.theme) {
-    score += 14;
-    reasons.push(`same theme (${target.theme})`);
+    score += 6;
+    contextReasons.push(`same theme (${target.theme})`);
   }
 
   if (target.quadClass !== null && target.quadClass === candidate.quadClass) {
-    score += 8;
+    score += 3;
   }
 
-  const days = daysApart(target, candidate);
   if (days !== null) {
     if (days <= 1) {
-      score += 16;
-      reasons.push("same 24h news cycle");
-    } else if (days <= 7) {
-      score += 11;
-      reasons.push(`${Math.round(days)} days apart`);
-    } else if (days <= 30) {
       score += 4;
+      contextReasons.push("same 24h news cycle");
+    } else if (days <= 7) {
+      score += 2;
+      contextReasons.push(`${Math.round(days)} days apart`);
+    } else if (days <= 30) {
+      score += 1;
     }
   }
 
   const km = distanceKm(target, candidate);
   if (km !== null) {
-    if (km <= 50) {
-      score += 18;
-      reasons.push("nearby location");
-    } else if (km <= 300) {
-      score += 10;
-      reasons.push(`regional proximity (${Math.round(km)} km)`);
-    } else if (km <= 1_000) {
-      score += 5;
+    if (km <= 50 && (days === null || days <= 7)) {
+      score += 26;
+      hasAnchor = true;
+      reasons.push(`nearby location (${Math.round(km)} km)`);
+    } else if (km <= 300 && days !== null && days <= 2) {
+      score += 8;
+      contextReasons.push(`regional proximity (${Math.round(km)} km)`);
     }
   }
 
   score += Math.min(10, Math.log10((candidate.numMentions ?? 0) + 1) * 4);
 
-  if (score < 32 || reasons.length === 0) return null;
-  return { event: candidate, score, reasons };
+  if (!hasAnchor || score < RELATED_SIGNAL_MIN_SCORE || reasons.length === 0) return null;
+  return { event: candidate, score, reasons: [...reasons, ...contextReasons].slice(0, 4) };
 }
 
 function findRelatedSignals(target: GdeltEvent, events: GdeltEvent[]): RelatedSignal[] {
@@ -1402,15 +1559,20 @@ function buildImpactMap(target: GdeltEvent, relatedSignals: RelatedSignal[], sou
   const direction = directionFromEvent(target);
   const financeRelevant = target.theme === "Econ" || hasAnyKeyword(text, FINANCE_KEYWORDS);
   const supplyRelevant = hasAnyKeyword(text, SUPPLY_CHAIN_KEYWORDS);
+  const goldsteinPoints = absGoldstein * 6;
+  const sourceConfidence = source?.fetched ? 0.22 : 0;
+  const mentionConfidence = Math.min(0.18, (target.numMentions ?? 0) / 300);
 
-  const base = absGoldstein * 6 + mentionBoost + relatedBoost;
+  const base = goldsteinPoints + mentionBoost + relatedBoost;
   const local = clamp(base + conflictBoost + (target.severity === "critical" ? 16 : 0), 0, 100);
   const humanitarian = clamp(base * 0.8 + (target.theme === "Humanitarian" ? 22 : 0) + (target.category === "doom" ? 14 : -4), 0, 100);
   const policy = clamp(base * 0.75 + (["Diplomacy", "Conflict", "Econ"].includes(target.theme ?? "") ? 18 : 4), 0, 100);
   const finance = clamp((financeRelevant ? 45 : 12) + mentionBoost + (target.category === "doom" ? 10 : 0) + relatedBoost * 0.5, 0, 100);
   const supplyChain = clamp((supplyRelevant ? 48 : 10) + mentionBoost + (target.category === "doom" ? 9 : 0), 0, 100);
   const social = clamp(base * 0.65 + (target.avgTone !== null && target.avgTone < -5 ? 18 : 5), 0, 100);
-  const confidence = clamp(0.35 + relatedSignals.length * 0.035 + (source?.fetched ? 0.22 : 0) + Math.min(0.18, (target.numMentions ?? 0) / 300), 0.25, 0.88);
+  const confidence = clamp(0.35 + relatedSignals.length * 0.035 + sourceConfidence + mentionConfidence, 0.25, 0.88);
+  const scoreInputs = `Inputs: |Goldstein| ${fmtNum(absGoldstein)} -> ${fmtNum(goldsteinPoints)} pts; mentions ${target.numMentions ?? 0} -> ${fmtNum(mentionBoost)} pts; strong links ${relatedSignals.length} -> ${fmtNum(relatedBoost)} pts.`;
+  const confidenceInputs = `Confidence starts at 35%, plus source ${source?.fetched ? "+22%" : "+0%"} and mentions +${Math.round(mentionConfidence * 100)}%.`;
 
   return [
     {
@@ -1419,7 +1581,7 @@ function buildImpactMap(target: GdeltEvent, relatedSignals: RelatedSignal[], sou
       score: Math.round(local),
       direction,
       confidence,
-      rationale: "Driven by event severity, location specificity, media mentions, and nearby linked incidents.",
+      rationale: `${scoreInputs} Local safety also adds ${target.category === "doom" ? "+16" : "-6"} for negative direction and ${target.severity === "critical" ? "+16" : "+0"} for critical severity. ${confidenceInputs}`,
     },
     {
       key: "humanitarian",
@@ -1427,7 +1589,7 @@ function buildImpactMap(target: GdeltEvent, relatedSignals: RelatedSignal[], sou
       score: Math.round(humanitarian),
       direction: target.category === "doom" ? "negative" : "mixed",
       confidence: clamp(confidence - 0.04, 0.2, 0.85),
-      rationale: "Higher when the event is hostile, severe, or connected to aid, civilian, refugee, disaster, or rights themes.",
+      rationale: `${scoreInputs} Humanitarian stress uses 80% of base, then ${target.theme === "Humanitarian" ? "+22 for humanitarian theme" : "+0 theme boost"} and ${target.category === "doom" ? "+14 for harm/risk direction" : "-4 because direction is not harmful"}.`,
     },
     {
       key: "policy",
@@ -1435,7 +1597,7 @@ function buildImpactMap(target: GdeltEvent, relatedSignals: RelatedSignal[], sou
       score: Math.round(policy),
       direction,
       confidence: clamp(confidence + 0.03, 0.2, 0.9),
-      rationale: "Uses actor type, CAMEO class, country, and same-theme signals to estimate official response pressure.",
+      rationale: `${scoreInputs} Policy impact uses 75% of base, then ${["Diplomacy", "Conflict", "Econ"].includes(target.theme ?? "") ? "+18 because the topic can affect official decisions" : "+4 because topic evidence is weak"}. Raw GDELT class is ${target.quadLabel}, which is only a coarse bucket.`,
     },
     {
       key: "finance",
@@ -1444,8 +1606,8 @@ function buildImpactMap(target: GdeltEvent, relatedSignals: RelatedSignal[], sou
       direction: financeRelevant ? direction : "mixed",
       confidence: financeRelevant ? clamp(confidence - 0.03, 0.2, 0.82) : 0.28,
       rationale: financeRelevant
-        ? "Finance keywords or economic theme appear in the evidence pack."
-        : "No direct market evidence in this pack; treat as a low-confidence spillover estimate.",
+        ? `Finance/economic keyword evidence found. Score adds base 45, mentions ${fmtNum(mentionBoost)}, harm/risk ${target.category === "doom" ? "+10" : "+0"}, and link boost ${fmtNum(relatedBoost * 0.5)}.`
+        : `No direct market evidence in this pack. Score is mostly a low-confidence baseline plus mentions ${fmtNum(mentionBoost)} and harm/risk ${target.category === "doom" ? "+10" : "+0"}.`,
     },
     {
       key: "supplyChain",
@@ -1454,8 +1616,8 @@ function buildImpactMap(target: GdeltEvent, relatedSignals: RelatedSignal[], sou
       direction: supplyRelevant ? direction : "mixed",
       confidence: supplyRelevant ? clamp(confidence - 0.03, 0.2, 0.82) : 0.25,
       rationale: supplyRelevant
-        ? "Supply-chain terms or strategic infrastructure appear in actors, location, theme, or source title."
-        : "No direct supply-chain evidence in this pack.",
+        ? `Supply-chain or infrastructure keyword evidence found. Score adds base 48, mentions ${fmtNum(mentionBoost)}, and harm/risk ${target.category === "doom" ? "+9" : "+0"}.`
+        : `No direct supply-chain evidence in this pack. Score is a low baseline plus mentions ${fmtNum(mentionBoost)} and harm/risk ${target.category === "doom" ? "+9" : "+0"}.`,
     },
     {
       key: "social",
@@ -1463,7 +1625,7 @@ function buildImpactMap(target: GdeltEvent, relatedSignals: RelatedSignal[], sou
       score: Math.round(social),
       direction: target.avgTone !== null && target.avgTone < -2 ? "negative" : "mixed",
       confidence: clamp(confidence + 0.02, 0.2, 0.88),
-      rationale: "Uses media tone, mentions, conflict class, and related-event density as a proxy for narrative intensity.",
+      rationale: `${scoreInputs} Social narrative uses 65% of base, then ${target.avgTone !== null && target.avgTone < -5 ? "+18 because average tone is strongly negative" : "+5 because tone is not strongly negative"}.`,
     },
   ];
 }
@@ -1832,8 +1994,12 @@ function buildReviewCopilot(
   };
 }
 
-async function buildProbePack(inputEvent: GdeltEvent, fetchSource = true): Promise<ProbePack> {
-  const dataset = await loadEventDataset().catch(() => ({ events: [] as GdeltEvent[], updated: undefined as string | undefined }));
+async function buildProbePack(
+  inputEvent: GdeltEvent,
+  fetchSource = true,
+  datasetOverride?: { events: GdeltEvent[]; updated?: string }
+): Promise<ProbePack> {
+  const dataset = datasetOverride ?? await loadEventDataset().catch(() => ({ events: [] as GdeltEvent[], updated: undefined as string | undefined }));
   const datasetEvent = dataset.events.find((candidate) => candidate.id === inputEvent.id);
   const selectedEvent = ensureReviewMetadata(datasetEvent ? { ...datasetEvent, ...inputEvent } : inputEvent);
   const corpus = dataset.events.length > 0 ? dataset.events.map(ensureReviewMetadata) : [selectedEvent];
@@ -2021,24 +2187,36 @@ async function fetchOne(url: string): Promise<GdeltEvent[]> {
           : quadClass === 1 || quadClass === 2 ? "bloom" : "doom";
 
       const country = cols[COL.ACTIONGEO_COUNTRYCODE]?.trim() ?? "";
+      const actor1 = cols[COL.ACTOR1NAME]?.trim() || "Unknown";
+      const actor2 = cols[COL.ACTOR2NAME]?.trim() || "Unknown";
+      const avgTone = isFinite(parseFloat(cols[COL.AVGTONE]))
+        ? parseFloat(cols[COL.AVGTONE])
+        : null;
+      const eventCode = cols[COL.EVENTCODE]?.trim() || "";
+      const sourceUrl = cols[COL.SOURCEURL]?.trim() ?? "";
+      const theme = classifyTheme(eventCode, actor1, actor2, quadClass, sourceUrl);
+      const numMentions = parseInt(cols[COL.NUMMENTIONS], 10) || 0;
 
-      events.push({
+      const event: GdeltEvent = {
         id: cols[COL.GLOBALEVENTID],
-        lat, lon, category, goldstein, quadClass,
+        lat, lon, category, theme,
+        hopeScore: calculateHopeScore(goldstein, avgTone, theme),
+        goldstein, quadClass,
         quadLabel: QUAD_LABELS[quadClass ?? 0] ?? "Unknown",
-        actor1: cols[COL.ACTOR1NAME]?.trim() || "Unknown",
-        actor2: cols[COL.ACTOR2NAME]?.trim() || "Unknown",
+        actor1,
+        actor2,
         country,
         location: cols[COL.ACTIONGEO_FULLNAME]?.trim() ?? "",
         date: fmtDate(cols[COL.SQLDATE]),
-        numMentions: parseInt(cols[COL.NUMMENTIONS], 10) || 0,
-        avgTone: isFinite(parseFloat(cols[COL.AVGTONE]))
-          ? parseFloat(cols[COL.AVGTONE]) : null,
-        sourceUrl: cols[COL.SOURCEURL]?.trim() ?? "",
+        numMentions,
+        avgTone,
+        sourceUrl,
         markerRadius: getRadius(goldstein),
         severity: getSeverity(goldstein),
         continent: FIPS_CONTINENT[country] ?? "Other",
-      });
+      };
+
+      events.push({ ...event, ...liveSurfaceMetadata(event) });
     }
 
     return events;
@@ -2048,6 +2226,10 @@ async function fetchOne(url: string): Promise<GdeltEvent[]> {
 }
 
 async function fetchGdelt(days: number): Promise<GdeltEvent[]> {
+  const cacheKey = `gdelt-live:${days}`;
+  const cached = cache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < CACHE_TTL) return cached.data;
+
   const urls = gdeltUrls(days);
   const results = await Promise.allSettled(urls.map(fetchOne));
 
@@ -2064,8 +2246,33 @@ async function fetchGdelt(days: number): Promise<GdeltEvent[]> {
     }
   }
 
-  all.sort((a, b) => b.markerRadius - a.markerRadius);
-  return all.slice(0, MAX_POINTS);
+  all.sort((a, b) =>
+    surfaceSortScore(b) - surfaceSortScore(a) ||
+    Number(b.numMentions ?? 0) - Number(a.numMentions ?? 0)
+  );
+  const data = all.slice(0, MAX_POINTS).map(ensureReviewMetadata);
+  cache.set(cacheKey, { data, ts: Date.now() });
+  return data;
+}
+
+type EventSource = "static" | "live";
+
+function eventSourceFromQuery(raw: string | undefined | null): EventSource {
+  return raw === "live" ? "live" : "static";
+}
+
+async function loadEventsForSource(source: EventSource, days: number): Promise<{ events: GdeltEvent[]; updated?: string; source: EventSource }> {
+  if (source === "live") {
+    const events = await fetchGdelt(days);
+    return { events, updated: new Date().toISOString(), source };
+  }
+
+  const dataset = await loadEventDataset();
+  return {
+    events: filterEventsByDatasetWindow(dataset.events, days).map(ensureReviewMetadata),
+    updated: dataset.updated,
+    source,
+  };
 }
 
 // ── App ───────────────────────────────────────────────────────────────────────
@@ -2149,23 +2356,23 @@ app.get("/api/ai-status", (c) => {
 app.get("/api/events", async (c) => {
   const requestedDays = Number.parseInt(c.req.query("days") ?? "7", 10);
   const days = Number.isFinite(requestedDays) ? Math.max(1, Math.min(30, requestedDays)) : 7;
+  const source = eventSourceFromQuery(c.req.query("source"));
 
   try {
-    const dataset = await loadEventDataset();
-    let events = filterEventsByDatasetWindow(dataset.events, days);
-    events = events.map(ensureReviewMetadata);
+    const dataset = await loadEventsForSource(source, days);
+    let events = dataset.events;
 
     events = [...events].sort((a: any, b: any) =>
       surfaceSortScore(b) - surfaceSortScore(a) ||
       Number(b.numMentions ?? 0) - Number(a.numMentions ?? 0)
     );
 
-    c.header("X-Cache", "STATIC");
-    return c.json({ events, count: events.length, updated: dataset.updated });
+    c.header("X-Cache", source === "live" ? "LIVE-GDELT" : "STATIC");
+    return c.json({ events, count: events.length, updated: dataset.updated, source });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error("API -> Failed to read events.json:", msg);
-    return c.json({ error: "Failed to load pre-enriched event dataset", events: [], count: 0 }, 500);
+    console.error("API -> Failed to load events:", msg);
+    return c.json({ error: source === "live" ? "Failed to load live GDELT feed" : "Failed to load pre-enriched event dataset", events: [], count: 0, source }, 500);
   }
 });
 
@@ -2173,6 +2380,7 @@ app.get("/api/review-queue", async (c) => {
   const rawDays = c.req.query("days") ?? "7";
   const rawLimit = c.req.query("limit") ?? "50";
   const rawMode = c.req.query("mode") ?? "priority";
+  const source = eventSourceFromQuery(c.req.query("source"));
   const days = Number.parseInt(rawDays, 10);
   const limit = Number.parseInt(rawLimit, 10);
 
@@ -2187,14 +2395,16 @@ app.get("/api/review-queue", async (c) => {
   }
 
   try {
-    const dataset = await loadEventDataset();
-    const labels = await loadPhase1Labels();
-    const events = filterEventsByDatasetWindow(dataset.events, days).map(ensureReviewMetadata);
+    const dataset = await loadEventsForSource(source, days);
+    const labels = source === "live" ? [] : await loadPhase1Labels();
+    const events = dataset.events.map(ensureReviewMetadata);
     const { rows, counts } = buildReviewQueueRows(events, labels, rawMode, limit);
 
     return c.json({
       queue: rows,
       counts,
+      source,
+      updated: dataset.updated,
       strategy: {
         mode: rawMode,
         days,
@@ -2205,7 +2415,9 @@ app.get("/api/review-queue", async (c) => {
           ? "Prioritize rows where a human label would reduce uncertainty near a review threshold."
           : "Prioritize under-reviewed regions, themes, and source domains.",
       },
-      caveat: "Active learning chooses useful rows for human source-checking. It does not create ground truth and never marks labels humanReviewed or sourceChecked.",
+      caveat: source === "live"
+        ? "Live GDELT rows are a moving news-data feed. They are classified heuristically and still require human source checking."
+        : "Active learning chooses useful rows for human source-checking. It does not create ground truth and never marks labels humanReviewed or sourceChecked.",
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -2301,18 +2513,21 @@ app.get("/api/risk-windows", async (c) => {
 
 app.get("/api/probe", async (c) => {
   const id = c.req.query("id")?.trim();
+  const source = eventSourceFromQuery(c.req.query("source"));
+  const requestedDays = Number.parseInt(c.req.query("days") ?? "7", 10);
+  const days = Number.isFinite(requestedDays) ? Math.max(1, Math.min(30, requestedDays)) : 7;
   if (!id) {
     return c.json({ error: "Missing event id" }, 400);
   }
 
   try {
-    const dataset = await loadEventDataset();
+    const dataset = await loadEventsForSource(source, days);
     const event = dataset.events.find((candidate) => candidate.id === id);
     if (!event) {
       return c.json({ error: "Event not found" }, 404);
     }
 
-    const pack = await buildProbePack(event, true);
+    const pack = await buildProbePack(event, true, dataset);
     return c.json({ probe: publicProbePack(pack) });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

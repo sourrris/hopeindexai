@@ -67,7 +67,7 @@ async function startSmokeServer(): Promise<{ server: Server; baseUrl: string }> 
   const envPort = Number.parseInt(process.env.SMOKE_API_PORT ?? "", 10);
   const ports = Number.isFinite(envPort) && envPort > 0
     ? [envPort]
-    : Array.from({ length: 50 }, (_, index) => 43100 + index);
+    : [0];
   let lastError = "";
 
   for (const port of ports) {
@@ -83,7 +83,8 @@ async function startSmokeServer(): Promise<{ server: Server; baseUrl: string }> 
     }
   }
 
-  throw new Error(`Failed to start server. Tried ports ${ports[0]}-${ports[ports.length - 1]}. ${lastError}`);
+  const portLabel = ports[0] === 0 ? "an ephemeral port" : `${ports[0]}-${ports[ports.length - 1]}`;
+  throw new Error(`Failed to start server. Tried ${portLabel}. ${lastError}`);
 }
 
 function assertSortedBySurface(events: EventRow[], label: string): void {

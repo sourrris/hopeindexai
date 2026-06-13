@@ -186,6 +186,15 @@ const LOCAL_CRIME_TERMS = [
   "romance-scam", "double-murder", "murder-for-hire", "homicide-victim",
 ];
 
+const LOCAL_PUBLIC_SAFETY_TERMS = [
+  "shark-attack", "shark attack", "attacked-while-fishing", "attacked while fishing",
+  "dog-attack", "dog attack", "bear-attack", "bear attack", "crocodile", "alligator",
+  "snakebite", "drowning", "rip-current", "rip current", "wildfire", "house-fire",
+  "house fire", "dormitory-fire", "dormitory fire", "car-crash", "car crash",
+  "plane-crash", "plane crash", "train-crash", "train crash", "fatal-crash",
+  "fatal crash", "accident",
+];
+
 const ENTERTAINMENT_HISTORY_TERMS = [
   "netflix", "documentary", "film", "films", "star-wars", "goldderby", "pearl-harbor",
   "civil-war", "memorial-day", "interior-designers", "mandakini", "singhasan",
@@ -458,6 +467,7 @@ function caveatsForEvent(event: GdeltEvent, penalties: string[], duplicateOf: st
   if (event.actor1 === "Unknown" || event.actor2 === "Unknown") caveats.push("Actor extraction is missing or generic.");
   if (reasonText.includes("source-mismatch") || reasonText.includes("background")) caveats.push("Possible background/source-mismatch article.");
   if (reasonText.includes("local crime")) caveats.push("May be local crime rather than strategic geopolitical signal.");
+  if (reasonText.includes("public-safety") || reasonText.includes("accident")) caveats.push("May be a local accident or public-safety story, not strategic conflict.");
   if (reasonText.includes("entertainment") || reasonText.includes("history")) caveats.push("May be entertainment or historical extraction noise.");
   if (reasonText.includes("opinion")) caveats.push("Opinion/background source; do not treat interpretation as fact.");
 
@@ -526,7 +536,7 @@ function buildEventUncertainty(row: ScoredEvent, cluster: EventClusterAssignment
     warnings.push("Actor or event title is generic, so row parsing may be weak.");
   }
 
-  if (row.penalties.some((penalty) => /source-mismatch|background|local crime|entertainment|history|opinion/i.test(penalty))) {
+  if (row.penalties.some((penalty) => /source-mismatch|background|local crime|public-safety|accident|entertainment|history|opinion/i.test(penalty))) {
     score += 17;
     warnings.push("Surfacing policy found source-quality or row-quality caveats.");
   }
@@ -561,6 +571,7 @@ function scoreSurfaceEvent(event: GdeltEvent, events: GdeltEvent[], model: Model
   const governance = hasGovernanceActor(event);
   const directEvent = hasAny(text, DIRECT_EVENT_TERMS);
   const localCrime = hasAny(text, LOCAL_CRIME_TERMS) && !strategic;
+  const localPublicSafety = hasAny(text, LOCAL_PUBLIC_SAFETY_TERMS) && !strategic;
   const entertainmentHistory = hasAny(text, ENTERTAINMENT_HISTORY_TERMS);
   const backgroundNoise = hasAny(text, BACKGROUND_NOISE_TERMS);
   const opinion = hasAny(text, OPINION_TERMS);
@@ -607,6 +618,10 @@ function scoreSurfaceEvent(event: GdeltEvent, events: GdeltEvent[], model: Model
   if (localCrime) {
     score -= 30;
     penalties.push("local crime pattern");
+  }
+  if (localPublicSafety) {
+    score -= 42;
+    penalties.push("local public-safety/accident pattern");
   }
   if (genericTitle && !directEvent) {
     score -= 28;
