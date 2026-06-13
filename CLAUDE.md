@@ -63,10 +63,10 @@ or edit both copies carefully.
 
 Single Hono app file. Main routes:
 
-- `GET /api/ai-status` returns `{ ready: boolean }` based on `ANTHROPIC_API_KEY`.
+- `GET /api/ai-status` reports whether LM Studio on localhost:1234 or an Anthropic API key is available for AI analysis.
 - `GET /api/events?days=1-30` reads `public/data/events.json`, filters relative to the latest event date in the dataset, sorts by `surfaceScore` and mentions, and returns a static enriched event slice.
 - `GET /api/probe?id=...` builds an evidence pack for one event: source evidence, related signals, model prediction, entities, impact map, hypotheses, actor game, watchlist, and uncertainty warnings.
-- `POST /api/analyze` calls Anthropic with an evidence-bound prompt. It uses `ANTHROPIC_API_KEY` from the server or a client-supplied fallback key.
+- `POST /api/analyze` uses LM Studio by default and falls back to Anthropic when configured.
 
 The source file still contains older GDELT ZIP parsing helpers, but the review-facing API path now serves the checked-in static event dataset.
 

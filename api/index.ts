@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import Anthropic from "@anthropic-ai/sdk";
 import { inflateRawSync } from "zlib";
 import { dirname, join } from "path";
 import { promises as fs } from "fs";
@@ -2072,10 +2073,77 @@ async function fetchGdelt(days: number): Promise<GdeltEvent[]> {
 export const app = new Hono();
 
 const ENV_API_KEY = process.env.ANTHROPIC_API_KEY ?? "";
-const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-6";
+const DEFAULT_LM_STUDIO_BASE_URL = "http://localhost:1234";
+const DEFAULT_LM_STUDIO_API_KEY = "lmstudio";
+const DEFAULT_LM_STUDIO_MODEL = "ibm/granite-4-micro";
+
+interface InferenceTarget {
+  provider: "lm-studio" | "anthropic";
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+}
+
+export function resolveInferenceTarget({
+  apiKey,
+  env = process.env,
+}: {
+  apiKey?: string;
+  env?: NodeJS.ProcessEnv;
+} = {}): InferenceTarget {
+  const explicitAnthropicKey = (apiKey ?? "").trim();
+  const anthropicKey = explicitAnthropicKey.startsWith("sk-ant")
+    ? explicitAnthropicKey
+    : (env.ANTHROPIC_API_KEY ?? "").trim();
+  const localBaseUrl = (env.LM_STUDIO_BASE_URL ?? DEFAULT_LM_STUDIO_BASE_URL).trim();
+  const localApiKey = (env.LM_STUDIO_API_KEY ?? DEFAULT_LM_STUDIO_API_KEY).trim();
+  const localModel = (env.LM_STUDIO_MODEL ?? DEFAULT_LM_STUDIO_MODEL).trim();
+  const localDisabled = env.LM_STUDIO_BASE_URL === "" || env.LM_STUDIO_BASE_URL === "disabled";
+
+  if (!localDisabled && localBaseUrl) {
+    return {
+      provider: "lm-studio",
+      baseUrl: localBaseUrl,
+      apiKey: localApiKey || DEFAULT_LM_STUDIO_API_KEY,
+      model: localModel || DEFAULT_LM_STUDIO_MODEL,
+    };
+  }
+
+  return {
+    provider: "anthropic",
+    baseUrl: "https://api.anthropic.com",
+    apiKey: anthropicKey || "",
+    model: env.ANTHROPIC_MODEL ?? "claude-sonnet-4-6",
+  };
+}
+
+function extractText(content: Array<{ type?: string; text?: string }> | undefined): string {
+  return (content ?? [])
+    .filter((part) => part?.type === "text" && typeof part.text === "string")
+    .map((part) => part.text ?? "")
+    .join("\n")
+    .trim();
+}
+
+async function callInference(target: InferenceTarget, systemPrompt: string, userPrompt: string, maxTokens: number) {
+  const client = new Anthropic({
+    baseURL: target.baseUrl,
+    apiKey: target.apiKey || "lmstudio",
+  });
+
+  const response = await client.messages.create({
+    model: target.model,
+    max_tokens: maxTokens,
+    system: systemPrompt,
+    messages: [{ role: "user", content: userPrompt }],
+  });
+
+  return extractText(response.content as Array<{ type?: string; text?: string }>) || "";
+}
 
 app.get("/api/ai-status", (c) => {
-  return c.json({ ready: Boolean(ENV_API_KEY) });
+  const target = resolveInferenceTarget({ env: process.env });
+  return c.json({ ready: target.provider === "lm-studio" || Boolean(target.apiKey) });
 });
 
 app.get("/api/events", async (c) => {
@@ -2262,14 +2330,10 @@ app.post("/api/analyze", async (c) => {
   }
 
   const { apiKey: clientKey, events, mode } = body;
-  const apiKey = (typeof clientKey === "string" && clientKey.startsWith("sk-ant"))
-    ? clientKey
-    : ENV_API_KEY;
+  const explicitAnthropicKey = typeof clientKey === "string" && clientKey.startsWith("sk-ant") ? clientKey : "";
 
-  if (!apiKey) {
-    return c.json({
-      error: "No Anthropic API key configured. Add ANTHROPIC_API_KEY to your .env file — see the setup guide in the README.",
-    }, 400);
+  if (!explicitAnthropicKey && !ENV_API_KEY) {
+    // LM Studio is the default local inference path, so we do not require an API key here.
   }
   if (!Array.isArray(events) || events.length === 0) {
     return c.json({ error: "No events provided" }, 400);
@@ -2349,32 +2413,36 @@ app.post("/api/analyze", async (c) => {
       `Events:\n${lines.join("\n")}\n\nBriefing:`;
   }
 
+  const maxTokens = mode === "detail" ? 2_200 : mode === "review_note" ? 700 : 1_200;
+
   try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        model: ANTHROPIC_MODEL,
-        max_tokens: mode === "detail" ? 2_200 : mode === "review_note" ? 700 : 1_200,
-        system: SYSTEM_PROMPT,
-        messages: [{ role: "user", content: userPrompt }],
-      }),
-      signal: AbortSignal.timeout(24_000),
+    const primaryTarget = resolveInferenceTarget({
+      apiKey: explicitAnthropicKey || ENV_API_KEY || undefined,
+      env: process.env,
     });
 
-    if (!res.ok) {
-      const msg = await res.text().catch(() => res.statusText);
-      return c.json({ error: `Anthropic API error (${res.status}): ${msg}` }, 502);
+    let analysis = "";
+
+    try {
+      analysis = await callInference(primaryTarget, SYSTEM_PROMPT, userPrompt, maxTokens);
+    } catch (primaryError) {
+      const fallbackTarget = resolveInferenceTarget({
+        apiKey: explicitAnthropicKey || ENV_API_KEY || undefined,
+        env: {
+          ...process.env,
+          LM_STUDIO_BASE_URL: "",
+          LM_STUDIO_API_KEY: "",
+          LM_STUDIO_MODEL: "",
+        },
+      });
+
+      if (primaryTarget.provider === "lm-studio" && fallbackTarget.provider === "anthropic" && fallbackTarget.apiKey) {
+        analysis = await callInference(fallbackTarget, SYSTEM_PROMPT, userPrompt, maxTokens);
+      } else {
+        throw primaryError;
+      }
     }
 
-    const data = (await res.json()) as {
-      content?: Array<{ type: string; text: string }>;
-    };
-    const analysis = data.content?.find((b) => b.type === "text")?.text ?? "";
     return c.json({
       analysis,
       evidence: probePack ? publicProbePack(probePack) : undefined,

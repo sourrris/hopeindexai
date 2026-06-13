@@ -1220,8 +1220,9 @@ function EventDetail({ event, events, onClose, onSelectEvent, apiKey, aiReady })
               <div className="ai-no-key-eyebrow">On-Demand Causal Probe</div>
               <div className="ai-no-key-heading">Unlock evidence-linked event probes.</div>
               <div className="ai-no-key-body">
-                Connect an Anthropic API key to fetch source evidence, connect related events, and generate cause hypotheses,
-                actor incentives, impact paths, and evidence-bounded scenario outlooks.
+                Use LM Studio on localhost:1234 (default) or connect an Anthropic API key to fetch source evidence,
+                connect related events, and generate cause hypotheses, actor incentives, impact paths, and
+                evidence-bounded scenario outlooks.
               </div>
               <a
                 href={GITHUB_URL + "#ai-analysis"}
@@ -1663,7 +1664,7 @@ function ReviewerCopilotPanel({ event, apiKey, aiReady }) {
           )}
         </div>
         {!aiReady && (
-          <p className="quiet-note">Add an Anthropic API key to draft a short note. The deterministic copilot still works without one.</p>
+          <p className="quiet-note">Use LM Studio on localhost:1234 or add an Anthropic API key to draft a short note. The deterministic copilot still works without one.</p>
         )}
         {draftError && <div className="ai-error">{draftError}</div>}
         {draftNote && <div className="ai-output copilot-draft">{draftNote}</div>}

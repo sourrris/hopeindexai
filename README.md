@@ -29,8 +29,8 @@ Open [http://localhost:3000](http://localhost:3000).
 Optional AI analysis:
 
 ```bash
-cp .env.example .env
-# add ANTHROPIC_API_KEY to .env
+# Start LM Studio locally on http://localhost:1234
+# or set ANTHROPIC_API_KEY as a fallback in .env
 bun run dev
 ```
 
@@ -86,7 +86,7 @@ The queue now uses active learning modes:
 
 In simple ML terms: clustering prevents grading the same incident twice, uncertainty says how shaky the row is, and active learning picks the next homework examples that can improve the answer key fastest.
 
-The Reviewer Copilot prepares the review packet for that decision. It explains why the event surfaced, what a human should verify, what uncertainty remains, and what to watch next. When an Anthropic API key is configured, it can draft a short review note, but that note is assistant text only. It is not evidence, not a human label, and not source-checked ground truth.
+The Reviewer Copilot prepares the review packet for that decision. It explains why the event surfaced, what a human should verify, what uncertainty remains, and what to watch next. When LM Studio is running on localhost:1234 (or an Anthropic API key is configured as fallback), it can draft a short review note, but that note is assistant text only. It is not evidence, not a human label, and not source-checked ground truth.
 
 ## Architecture
 
