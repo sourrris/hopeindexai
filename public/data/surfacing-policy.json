@@ -1,0 +1,113 @@
+{
+  "version": "phase1-surfacing-policy-v1",
+  "generatedAt": "2026-06-14T08:43:52.433Z",
+  "labelSource": "source_checked_human",
+  "threshold": 42,
+  "bandCutoffs": {
+    "lead": 72,
+    "watch": 52
+  },
+  "model": {
+    "source": "public/data/escalation-model-supervised.json",
+    "version": "escalation-logreg-supervised-v1",
+    "threshold": 0.89
+  },
+  "rules": {
+    "boosts": [
+      "strategic actor or theater",
+      "governance or public-safety signal",
+      "high-mention diplomacy",
+      "humanitarian/public-safety signal"
+    ],
+    "penalties": [
+      "duplicate source row",
+      "local crime pattern",
+      "entertainment/history extraction noise",
+      "opinion/background article",
+      "single-mention weak signal"
+    ]
+  },
+  "metrics": {
+    "labels": {
+      "rows": 120,
+      "sourceCounts": {
+        "human": 101,
+        "llm_article_review": 19
+      },
+      "humanReviewedRows": 101,
+      "sourceCheckedHumanRows": 101,
+      "uncheckedHumanReviewedRows": 0
+    },
+    "baseline": {
+      "samples": 120,
+      "positives": 40,
+      "negatives": 80,
+      "predictedPositive": 117,
+      "accuracy": 0.3583,
+      "balancedAccuracy": 0.5188,
+      "precision": 0.3419,
+      "recall": 1,
+      "specificity": 0.0375,
+      "f1": 0.5096,
+      "falseAlarmRate": 0.6581,
+      "missRate": 0,
+      "confusion": {
+        "tp": 40,
+        "fp": 77,
+        "tn": 3,
+        "fn": 0
+      }
+    },
+    "candidateModel": {
+      "samples": 120,
+      "positives": 40,
+      "negatives": 80,
+      "predictedPositive": 16,
+      "accuracy": 0.7333,
+      "balancedAccuracy": 0.625,
+      "precision": 0.75,
+      "recall": 0.3,
+      "specificity": 0.95,
+      "f1": 0.4286,
+      "falseAlarmRate": 0.25,
+      "missRate": 0.7,
+      "confusion": {
+        "tp": 12,
+        "fp": 4,
+        "tn": 76,
+        "fn": 28
+      }
+    },
+    "surfacePolicy": {
+      "samples": 120,
+      "positives": 40,
+      "negatives": 80,
+      "predictedPositive": 35,
+      "accuracy": 0.7917,
+      "balancedAccuracy": 0.75,
+      "precision": 0.7143,
+      "recall": 0.625,
+      "specificity": 0.875,
+      "f1": 0.6667,
+      "falseAlarmRate": 0.2857,
+      "missRate": 0.375,
+      "confusion": {
+        "tp": 25,
+        "fp": 10,
+        "tn": 70,
+        "fn": 15
+      }
+    },
+    "precisionAt": {
+      "top10": 0.9,
+      "top25": 0.72,
+      "top50": 0.58
+    },
+    "clusters": {
+      "sourceClusters": 373,
+      "incidentClusters": 824,
+      "incidentClusterMembers": 676
+    }
+  },
+  "warning": "This policy is calibrated on Codex/LLM-reviewed labels unless at least 100 source-checked human labels are present. It improves product triage but is not a final scientific claim."
+}

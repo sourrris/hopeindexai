@@ -1,0 +1,90 @@
+{
+  "schemaVersion": "external-profile.ucdp-ged.v1",
+  "generatedAt": "2026-06-14T09:26:27.589Z",
+  "sourcePath": "data/external/ucdp/GEDEvent_v26_1.csv",
+  "outputPath": "data/external/ucdp/ged_events_compact.jsonl",
+  "dataset": {
+    "sourceSystem": "ucdp_ged",
+    "version": "26.1",
+    "license": "CC BY 4.0",
+    "sourceUrl": "https://ucdp.uu.se/downloads/ged/ged261-csv.zip"
+  },
+  "rows": 417968,
+  "columns": 49,
+  "dateRange": {
+    "min": "1989-01-01",
+    "max": "2025-12-31"
+  },
+  "yearRange": {
+    "min": 1989,
+    "max": 2025
+  },
+  "totals": {
+    "bestDeaths": 4257891,
+    "civilianDeaths": 1570458,
+    "rowsWithSourceArticle": 417966,
+    "rowsWithSourceHeadline": 320472
+  },
+  "counts": {
+    "typeOfViolence": {
+      "1": 292121,
+      "2": 61451,
+      "3": 64396
+    },
+    "region": {
+      "Middle East": 128033,
+      "Asia": 100564,
+      "Africa": 74836,
+      "Europe": 58016,
+      "Americas": 56519
+    },
+    "countryTop20": {
+      "Syria": 88289,
+      "Afghanistan": 42476,
+      "Ukraine": 40434,
+      "Mexico": 25714,
+      "India": 18209,
+      "Colombia": 16481,
+      "Israel": 11554,
+      "DR Congo (Zaire)": 10078,
+      "Iraq": 9806,
+      "Bosnia-Herzegovina": 9340,
+      "Myanmar (Burma)": 9191,
+      "Pakistan": 9077,
+      "Brazil": 8934,
+      "Nigeria": 8255,
+      "Turkey": 7279,
+      "Somalia": 7232,
+      "Ethiopia": 6686,
+      "Yemen (North Yemen)": 6291,
+      "Nepal": 5656,
+      "Sudan": 5283
+    },
+    "yearTop20Recent": {
+      "2006": 5684,
+      "2007": 7081,
+      "2008": 6790,
+      "2009": 7438,
+      "2010": 9139,
+      "2011": 7900,
+      "2012": 18601,
+      "2013": 24580,
+      "2014": 25962,
+      "2015": 19927,
+      "2016": 17416,
+      "2017": 16412,
+      "2018": 13646,
+      "2019": 13911,
+      "2020": 13484,
+      "2021": 17316,
+      "2022": 21013,
+      "2023": 27422,
+      "2024": 30066,
+      "2025": 25770
+    }
+  },
+  "notes": [
+    "UCDP GED is curated historical organized-violence evidence, not a direct replacement for HopeIndexAI source-checked human importance labels.",
+    "The current HopeIndexAI public slice is May 2026; GED 26.1 ends on 2025-12-31, so direct matching should report no temporal overlap until a current external feed is added."
+  ]
+}

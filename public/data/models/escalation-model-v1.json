@@ -1,0 +1,422 @@
+{
+  "version": "escalation-logreg-full-v1",
+  "trainedAt": "2026-06-14T15:52:17.351Z",
+  "target": {
+    "name": "ucdp_organized_violence_match",
+    "definition": "1 when the GDELT event matches a lethal UCDP organized-violence event within +/-3 days and 300 km, or is human-labeled important.",
+    "horizonDays": 0,
+    "labelSource": "UCDP GED + Candidate + source-checked Phase 1 human labels."
+  },
+  "data": {
+    "sourceUpdated": "2026-05-31T07:20:25.798Z",
+    "totalEvents": 1500,
+    "labeledEvents": 1500,
+    "trainSamples": 1050,
+    "valSamples": 225,
+    "testSamples": 225
+  },
+  "featureNames": [
+    "goldstein",
+    "abs_goldstein",
+    "avg_tone",
+    "mentions_log",
+    "hope_score",
+    "is_doom",
+    "is_critical",
+    "is_high",
+    "lat_abs",
+    "has_actor2",
+    "theme_Diplomacy",
+    "theme_Conflict",
+    "theme_Econ",
+    "theme_Environment",
+    "theme_Humanitarian",
+    "theme_Science",
+    "continent_Americas",
+    "continent_Europe",
+    "continent_Middle_East",
+    "continent_Africa",
+    "continent_Asia",
+    "continent_Oceania",
+    "continent_Other",
+    "quad_1",
+    "quad_2",
+    "quad_3",
+    "quad_4",
+    "country_past3_count_log",
+    "country_past3_doom_ratio",
+    "country_past3_min_goldstein",
+    "country_past3_avg_tone",
+    "actor_past7_count_log",
+    "actor_past7_doom_ratio",
+    "actor_past7_min_goldstein",
+    "theme_country_past7_count_log",
+    "same_source_past7_count_log",
+    "nearby_past3_count_log",
+    "num_mentions",
+    "source_tier",
+    "duplicate_cluster_size"
+  ],
+  "preprocessing": {
+    "means": [
+      -8.2408,
+      9.7583,
+      -4.2974,
+      1.937,
+      0.1309,
+      0.9143,
+      0.9886,
+      0.0114,
+      0.3771,
+      0.6971,
+      0.0248,
+      0.8133,
+      0.0171,
+      0.001,
+      0.0562,
+      0.0876,
+      0.3533,
+      0.161,
+      0.1657,
+      0.0667,
+      0.1467,
+      0.0476,
+      0.059,
+      0.0305,
+      0.0552,
+      0.0019,
+      0.9124,
+      2.3788,
+      0.671,
+      -6.9657,
+      -2.8619,
+      1.0143,
+      0.4774,
+      -4.9236,
+      2.1079,
+      0.2732,
+      1.3101,
+      7.9914,
+      2.0648,
+      2.7105
+    ],
+    "stds": [
+      5.2522,
+      0.5216,
+      3.7775,
+      0.686,
+      0.2141,
+      0.2799,
+      0.1063,
+      0.1063,
+      0.1428,
+      0.4595,
+      0.1554,
+      0.3896,
+      0.1298,
+      0.0308,
+      0.2303,
+      0.2827,
+      0.478,
+      0.3675,
+      0.3718,
+      0.2494,
+      0.3538,
+      0.213,
+      0.2357,
+      0.1719,
+      0.2284,
+      0.0436,
+      0.2827,
+      1.8698,
+      0.4304,
+      4.9447,
+      2.5499,
+      1.1336,
+      0.473,
+      5.3365,
+      1.8411,
+      0.6068,
+      1.2127,
+      9.2013,
+      0.3111,
+      1.8372
+    ]
+  },
+  "model": {
+    "kind": "logistic_regression",
+    "bias": -4.2164,
+    "weights": [
+      -0.208,
+      0.8214,
+      -0.6169,
+      0.1136,
+      -0.1567,
+      0.1574,
+      0.3716,
+      -0.3716,
+      0.3509,
+      0.945,
+      0.2684,
+      0.2973,
+      -0.3879,
+      -0.023,
+      -0.2357,
+      -0.1847,
+      -0.844,
+      -0.1306,
+      0.4653,
+      0.4344,
+      0.2619,
+      -0.4224,
+      0.71,
+      0.1129,
+      -0.2778,
+      0.0086,
+      0.1545,
+      -0.2388,
+      -0.3801,
+      0.412,
+      0.0182,
+      0.0714,
+      -0.6856,
+      0.1468,
+      -0.2059,
+      0.1241,
+      -0.0288,
+      1.6407,
+      0.4078,
+      0.4491
+    ],
+    "threshold": 0.67,
+    "l2": 0.005,
+    "epochs": 500,
+    "batchSize": 256
+  },
+  "metrics": {
+    "train": {
+      "samples": 1050,
+      "positives": 16,
+      "negatives": 1034,
+      "baseRate": 0.015238095238095238,
+      "threshold": 0.6700000000000004,
+      "accuracy": 0.9628571428571429,
+      "precision": 0.2909090909090909,
+      "recall": 1,
+      "specificity": 0.9622823984526112,
+      "f1": 0.45070422535211263,
+      "auc": 0.9892408123791102,
+      "confusion": {
+        "tp": 16,
+        "fp": 39,
+        "tn": 995,
+        "fn": 0
+      }
+    },
+    "val": {
+      "samples": 225,
+      "positives": 3,
+      "negatives": 222,
+      "baseRate": 0.013333333333333334,
+      "threshold": 0.6700000000000004,
+      "accuracy": 0.9644444444444444,
+      "precision": 0.2222222222222222,
+      "recall": 0.6666666666666666,
+      "specificity": 0.9684684684684685,
+      "f1": 0.3333333333333333,
+      "auc": 0.7852852852852853,
+      "confusion": {
+        "tp": 2,
+        "fp": 7,
+        "tn": 215,
+        "fn": 1
+      }
+    },
+    "test": {
+      "samples": 225,
+      "positives": 4,
+      "negatives": 221,
+      "baseRate": 0.017777777777777778,
+      "threshold": 0.6700000000000004,
+      "accuracy": 0.96,
+      "precision": 0.2727272727272727,
+      "recall": 0.75,
+      "specificity": 0.9638009049773756,
+      "f1": 0.39999999999999997,
+      "auc": 0.918552036199095,
+      "confusion": {
+        "tp": 3,
+        "fp": 8,
+        "tn": 213,
+        "fn": 1
+      }
+    }
+  },
+  "featureImportance": [
+    {
+      "name": "num_mentions",
+      "importance": 15.09623327163254
+    },
+    {
+      "name": "avg_tone",
+      "importance": 2.330219197924732
+    },
+    {
+      "name": "country_past3_min_goldstein",
+      "importance": 2.0373870944652697
+    },
+    {
+      "name": "goldstein",
+      "importance": 1.0926169318469212
+    },
+    {
+      "name": "duplicate_cluster_size",
+      "importance": 0.8251218589547777
+    },
+    {
+      "name": "actor_past7_min_goldstein",
+      "importance": 0.7835015118595148
+    },
+    {
+      "name": "country_past3_count_log",
+      "importance": 0.4464339943414336
+    },
+    {
+      "name": "has_actor2",
+      "importance": 0.43420260039172326
+    },
+    {
+      "name": "abs_goldstein",
+      "importance": 0.4284519710010786
+    },
+    {
+      "name": "continent_Americas",
+      "importance": 0.4034379452378102
+    },
+    {
+      "name": "theme_country_past7_count_log",
+      "importance": 0.3790415972536238
+    },
+    {
+      "name": "actor_past7_doom_ratio",
+      "importance": 0.32430587152004353
+    },
+    {
+      "name": "continent_Middle_East",
+      "importance": 0.17301171224583187
+    },
+    {
+      "name": "continent_Other",
+      "importance": 0.16735610721110847
+    },
+    {
+      "name": "country_past3_doom_ratio",
+      "importance": 0.1636285819580279
+    },
+    {
+      "name": "source_tier",
+      "importance": 0.12684939750627086
+    },
+    {
+      "name": "theme_Conflict",
+      "importance": 0.11583620828396869
+    },
+    {
+      "name": "continent_Africa",
+      "importance": 0.10836103484612321
+    },
+    {
+      "name": "continent_Asia",
+      "importance": 0.09265241710528303
+    },
+    {
+      "name": "continent_Oceania",
+      "importance": 0.08995927157459442
+    },
+    {
+      "name": "actor_past7_count_log",
+      "importance": 0.08098088858212273
+    },
+    {
+      "name": "mentions_log",
+      "importance": 0.07793654710317865
+    },
+    {
+      "name": "same_source_past7_count_log",
+      "importance": 0.07527670748196294
+    },
+    {
+      "name": "quad_2",
+      "importance": 0.06347310800059393
+    },
+    {
+      "name": "theme_Humanitarian",
+      "importance": 0.05427246263990768
+    },
+    {
+      "name": "theme_Science",
+      "importance": 0.05221649707478463
+    },
+    {
+      "name": "theme_Econ",
+      "importance": 0.05035357876937842
+    },
+    {
+      "name": "lat_abs",
+      "importance": 0.050097012560577886
+    },
+    {
+      "name": "continent_Europe",
+      "importance": 0.0479840545959423
+    },
+    {
+      "name": "country_past3_avg_tone",
+      "importance": 0.046350324484405465
+    },
+    {
+      "name": "is_doom",
+      "importance": 0.04406553741796331
+    },
+    {
+      "name": "quad_4",
+      "importance": 0.04369205092863355
+    },
+    {
+      "name": "theme_Diplomacy",
+      "importance": 0.04171432935443848
+    },
+    {
+      "name": "is_critical",
+      "importance": 0.03950329041950992
+    },
+    {
+      "name": "is_high",
+      "importance": 0.039503290419509896
+    },
+    {
+      "name": "nearby_past3_count_log",
+      "importance": 0.0348868603608719
+    },
+    {
+      "name": "hope_score",
+      "importance": 0.03353863698121467
+    },
+    {
+      "name": "quad_1",
+      "importance": 0.019407570582630294
+    },
+    {
+      "name": "theme_Environment",
+      "importance": 0.000707999154336481
+    },
+    {
+      "name": "quad_3",
+      "importance": 0.00037348648932985785
+    }
+  ],
+  "limitations": [
+    "Pure-JS mini-batch logistic regression is an interim scalable learner; LightGBM/XGBoost is the planned production learner.",
+    "Training labels mix UCDP organized-violence matches with human importance judgments.",
+    "UCDP covers organized lethal violence only; other signal types are out of scope."
+  ]
+}

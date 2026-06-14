@@ -1,0 +1,429 @@
+{
+  "schemaVersion": "risk-window-model-report.v1",
+  "generatedAt": "2026-06-11T12:05:43.260Z",
+  "modelVersion": "risk-window-logreg-v1",
+  "datasetPath": "data/training/risk_windows_country_month.jsonl",
+  "baselinePath": "data/eval/risk_windows_baseline_report.json",
+  "modelPath": "data/models/risk_window_logreg_model.json",
+  "algorithm": {
+    "name": "weighted_l2_logistic_regression",
+    "epochs": 900,
+    "learningRate": 0.04,
+    "l2": 0.002,
+    "featureCount": 33,
+    "trainPositives": 5318,
+    "trainNegatives": 10234
+  },
+  "splits": {
+    "train": {
+      "model": {
+        "rows": 15552,
+        "positives": 5318,
+        "prevalence": 0.3419,
+        "averagePrecision": 0.9389,
+        "brier": 0.0754,
+        "top5Pct": {
+          "fraction": 0.05,
+          "selected": 778,
+          "precision": 1,
+          "recall": 0.1463
+        },
+        "top10Pct": {
+          "fraction": 0.1,
+          "selected": 1555,
+          "precision": 0.9974,
+          "recall": 0.2917
+        },
+        "top20Pct": {
+          "fraction": 0.2,
+          "selected": 3110,
+          "precision": 0.9781,
+          "recall": 0.572
+        }
+      },
+      "baseline": {
+        "rows": 15552,
+        "positives": 5318,
+        "prevalence": 0.3419,
+        "averagePrecision": 0.9448,
+        "brier": null,
+        "top5Pct": {
+          "fraction": 0.05,
+          "selected": 778,
+          "precision": 0.9961,
+          "recall": 0.1457
+        },
+        "top10Pct": {
+          "fraction": 0.1,
+          "selected": 1555,
+          "precision": 0.9968,
+          "recall": 0.2915
+        },
+        "top20Pct": {
+          "fraction": 0.2,
+          "selected": 3110,
+          "precision": 0.9855,
+          "recall": 0.5763
+        }
+      },
+      "averagePrecisionDelta": -0.0059,
+      "top10PrecisionDelta": 0.0006
+    },
+    "validation": {
+      "model": {
+        "rows": 2592,
+        "positives": 1043,
+        "prevalence": 0.4024,
+        "averagePrecision": 0.9464,
+        "brier": 0.081,
+        "top5Pct": {
+          "fraction": 0.05,
+          "selected": 130,
+          "precision": 1,
+          "recall": 0.1246
+        },
+        "top10Pct": {
+          "fraction": 0.1,
+          "selected": 259,
+          "precision": 1,
+          "recall": 0.2483
+        },
+        "top20Pct": {
+          "fraction": 0.2,
+          "selected": 518,
+          "precision": 0.9788,
+          "recall": 0.4861
+        }
+      },
+      "baseline": {
+        "rows": 2592,
+        "positives": 1043,
+        "prevalence": 0.4024,
+        "averagePrecision": 0.9598,
+        "brier": null,
+        "top5Pct": {
+          "fraction": 0.05,
+          "selected": 130,
+          "precision": 1,
+          "recall": 0.1246
+        },
+        "top10Pct": {
+          "fraction": 0.1,
+          "selected": 259,
+          "precision": 1,
+          "recall": 0.2483
+        },
+        "top20Pct": {
+          "fraction": 0.2,
+          "selected": 518,
+          "precision": 0.9961,
+          "recall": 0.4947
+        }
+      },
+      "averagePrecisionDelta": -0.0134,
+      "top10PrecisionDelta": 0
+    },
+    "test": {
+      "model": {
+        "rows": 1296,
+        "positives": 504,
+        "prevalence": 0.3889,
+        "averagePrecision": 0.9722,
+        "brier": 0.0598,
+        "top5Pct": {
+          "fraction": 0.05,
+          "selected": 65,
+          "precision": 1,
+          "recall": 0.129
+        },
+        "top10Pct": {
+          "fraction": 0.1,
+          "selected": 130,
+          "precision": 1,
+          "recall": 0.2579
+        },
+        "top20Pct": {
+          "fraction": 0.2,
+          "selected": 259,
+          "precision": 1,
+          "recall": 0.5139
+        }
+      },
+      "baseline": {
+        "rows": 1296,
+        "positives": 504,
+        "prevalence": 0.3889,
+        "averagePrecision": 0.9774,
+        "brier": null,
+        "top5Pct": {
+          "fraction": 0.05,
+          "selected": 65,
+          "precision": 1,
+          "recall": 0.129
+        },
+        "top10Pct": {
+          "fraction": 0.1,
+          "selected": 130,
+          "precision": 1,
+          "recall": 0.2579
+        },
+        "top20Pct": {
+          "fraction": 0.2,
+          "selected": 259,
+          "precision": 1,
+          "recall": 0.5139
+        }
+      },
+      "averagePrecisionDelta": -0.0052,
+      "top10PrecisionDelta": 0
+    },
+    "holdout_preliminary": {
+      "model": {
+        "rows": 540,
+        "positives": 203,
+        "prevalence": 0.3759,
+        "averagePrecision": 0.7367,
+        "brier": 0.1817,
+        "top5Pct": {
+          "fraction": 0.05,
+          "selected": 27,
+          "precision": 0.7778,
+          "recall": 0.1034
+        },
+        "top10Pct": {
+          "fraction": 0.1,
+          "selected": 54,
+          "precision": 0.7963,
+          "recall": 0.2118
+        },
+        "top20Pct": {
+          "fraction": 0.2,
+          "selected": 108,
+          "precision": 0.787,
+          "recall": 0.4187
+        }
+      },
+      "baseline": {
+        "rows": 540,
+        "positives": 203,
+        "prevalence": 0.3759,
+        "averagePrecision": 0.7297,
+        "brier": null,
+        "top5Pct": {
+          "fraction": 0.05,
+          "selected": 27,
+          "precision": 0.7778,
+          "recall": 0.1034
+        },
+        "top10Pct": {
+          "fraction": 0.1,
+          "selected": 54,
+          "precision": 0.7963,
+          "recall": 0.2118
+        },
+        "top20Pct": {
+          "fraction": 0.2,
+          "selected": 108,
+          "precision": 0.7778,
+          "recall": 0.4138
+        }
+      },
+      "averagePrecisionDelta": 0.007,
+      "top10PrecisionDelta": 0
+    }
+  },
+  "previousBaselineReport": [
+    {
+      "split": "train",
+      "rows": 15552,
+      "positives": 5318,
+      "prevalence": 0.3419,
+      "deathsBest": 1588818,
+      "averagePrecision": 0.9448,
+      "top5Pct": {
+        "fraction": 0.05,
+        "selected": 778,
+        "precision": 0.9961,
+        "recall": 0.1457
+      },
+      "top10Pct": {
+        "fraction": 0.1,
+        "selected": 1555,
+        "precision": 0.9968,
+        "recall": 0.2915
+      },
+      "top20Pct": {
+        "fraction": 0.2,
+        "selected": 3110,
+        "precision": 0.9855,
+        "recall": 0.5763
+      }
+    },
+    {
+      "split": "validation",
+      "rows": 2592,
+      "positives": 1043,
+      "prevalence": 0.4024,
+      "deathsBest": 358641,
+      "averagePrecision": 0.9598,
+      "top5Pct": {
+        "fraction": 0.05,
+        "selected": 130,
+        "precision": 1,
+        "recall": 0.1246
+      },
+      "top10Pct": {
+        "fraction": 0.1,
+        "selected": 259,
+        "precision": 1,
+        "recall": 0.2483
+      },
+      "top20Pct": {
+        "fraction": 0.2,
+        "selected": 518,
+        "precision": 0.9961,
+        "recall": 0.4947
+      }
+    },
+    {
+      "split": "test",
+      "rows": 1296,
+      "positives": 504,
+      "prevalence": 0.3889,
+      "deathsBest": 245464,
+      "averagePrecision": 0.9774,
+      "top5Pct": {
+        "fraction": 0.05,
+        "selected": 65,
+        "precision": 1,
+        "recall": 0.129
+      },
+      "top10Pct": {
+        "fraction": 0.1,
+        "selected": 130,
+        "precision": 1,
+        "recall": 0.2579
+      },
+      "top20Pct": {
+        "fraction": 0.2,
+        "selected": 259,
+        "precision": 1,
+        "recall": 0.5139
+      }
+    },
+    {
+      "split": "holdout_preliminary",
+      "rows": 540,
+      "positives": 203,
+      "prevalence": 0.3759,
+      "deathsBest": 79746,
+      "averagePrecision": 0.7297,
+      "top5Pct": {
+        "fraction": 0.05,
+        "selected": 27,
+        "precision": 0.7778,
+        "recall": 0.1034
+      },
+      "top10Pct": {
+        "fraction": 0.1,
+        "selected": 54,
+        "precision": 0.7963,
+        "recall": 0.2118
+      },
+      "top20Pct": {
+        "fraction": 0.2,
+        "selected": 108,
+        "precision": 0.7778,
+        "recall": 0.4138
+      }
+    }
+  ],
+  "topWeights": [
+    {
+      "feature": "baselineHistoryScore",
+      "weight": 1.1504
+    },
+    {
+      "feature": "past12mActorTokenCount",
+      "weight": 0.778
+    },
+    {
+      "feature": "stateBasedShare12m",
+      "weight": 0.6276
+    },
+    {
+      "feature": "past3mActorTokenCount",
+      "weight": 0.5569
+    },
+    {
+      "feature": "oneSidedShare12m",
+      "weight": 0.4128
+    },
+    {
+      "feature": "actorMemoryPersistence3m12m",
+      "weight": 0.4099
+    },
+    {
+      "feature": "nonStateShare12m",
+      "weight": 0.2311
+    },
+    {
+      "feature": "acledPoliticalViolenceShare12m",
+      "weight": 0.2058
+    },
+    {
+      "feature": "acledDemonstrationShare12m",
+      "weight": -0.2008
+    },
+    {
+      "feature": "monthsSinceLastEvent",
+      "weight": -0.1954
+    },
+    {
+      "feature": "acledPast12mEvents",
+      "weight": 0.184
+    },
+    {
+      "feature": "acledPast12mFatalities",
+      "weight": 0.1678
+    },
+    {
+      "feature": "acledPast1mEvents",
+      "weight": 0.1605
+    },
+    {
+      "feature": "acledPast3mEvents",
+      "weight": 0.1605
+    },
+    {
+      "feature": "acledPast3mFatalities",
+      "weight": 0.152
+    },
+    {
+      "feature": "past12mEvents",
+      "weight": 0.1508
+    },
+    {
+      "feature": "acledPast1mFatalities",
+      "weight": 0.1498
+    },
+    {
+      "feature": "past1mEvents",
+      "weight": 0.1322
+    },
+    {
+      "feature": "past3mEvents",
+      "weight": 0.1321
+    },
+    {
+      "feature": "past12mCivilianDeaths",
+      "weight": 0.1289
+    }
+  ],
+  "notes": [
+    "This is the first small transparent model, not a production forecaster.",
+    "The simple baseline score is included as a prior feature, so the model learns corrections rather than ignoring a strong historical prior.",
+    "It predicts UCDP organized-violence outcome risk at country-month level, not HopeIndexAI importance labels.",
+    "Validation/test deltas against the dumb history baseline matter more than train performance."
+  ]
+}
