@@ -1,8 +1,8 @@
 {
   "version": "phase1-surfacing-policy-v1",
-  "generatedAt": "2026-06-13T08:59:47.811Z",
+  "generatedAt": "2026-06-14T06:48:07.291Z",
   "labelSource": "provisional_non_human",
-  "threshold": 66,
+  "threshold": 38,
   "bandCutoffs": {
     "lead": 72,
     "watch": 52
@@ -82,26 +82,26 @@
       "samples": 120,
       "positives": 42,
       "negatives": 78,
-      "predictedPositive": 36,
-      "accuracy": 0.8667,
-      "balancedAccuracy": 0.837,
-      "precision": 0.8611,
-      "recall": 0.7381,
-      "specificity": 0.9359,
-      "f1": 0.7949,
-      "falseAlarmRate": 0.1389,
-      "missRate": 0.2619,
+      "predictedPositive": 60,
+      "accuracy": 0.7,
+      "balancedAccuracy": 0.7198,
+      "precision": 0.55,
+      "recall": 0.7857,
+      "specificity": 0.6538,
+      "f1": 0.6471,
+      "falseAlarmRate": 0.45,
+      "missRate": 0.2143,
       "confusion": {
-        "tp": 31,
-        "fp": 5,
-        "tn": 73,
-        "fn": 11
+        "tp": 33,
+        "fp": 27,
+        "tn": 51,
+        "fn": 9
       }
     },
     "precisionAt": {
       "top10": 1,
-      "top25": 0.96,
-      "top50": 0.68
+      "top25": 0.8,
+      "top50": 0.56
     },
     "clusters": {
       "sourceClusters": 373,

@@ -498,7 +498,10 @@ function hasStrategicActorText(actor1: string, actor2: string): boolean {
   ].some((token) => text.includes(token));
 }
 
-function liveSurfaceMetadata(event: GdeltEvent): Pick<GdeltEvent, "surfaceScore" | "surfaceBand" | "surfaceReasons" | "surfaceRadius" | "surfaceModelProbability"> {
+async function liveSurfaceMetadata(
+  event: GdeltEvent,
+  events: GdeltEvent[]
+): Promise<Pick<GdeltEvent, "surfaceScore" | "surfaceBand" | "surfaceReasons" | "surfaceRadius" | "surfaceModelProbability">> {
   const reasons: string[] = [];
   const mentions = Number(event.numMentions ?? 0);
   const absGoldstein = Math.abs(Number(event.goldstein ?? 0));
@@ -544,12 +547,31 @@ function liveSurfaceMetadata(event: GdeltEvent): Pick<GdeltEvent, "surfaceScore"
   }
 
   const surfaceScore = Math.round(clamp(score, 0, 100));
+
+  // Use the trained model for a real probability. Fallback to a calibrated
+  // heuristic only when the model artifact is missing or incompatible.
+  let surfaceModelProbability = Number((surfaceScore / 100).toFixed(4));
+  try {
+    const model = await loadEscalationModel();
+    if (model?.featureNames && model?.preprocessing && model?.model) {
+      const raw = modelFeaturesFor(event, events);
+      const means: number[] = model.preprocessing.means ?? [];
+      const stds: number[] = model.preprocessing.stds ?? [];
+      const weights: number[] = model.model.weights ?? [];
+      const standardized = raw.map((value, i) => (value - (means[i] ?? 0)) / (stds[i] || 1));
+      const logit = (model.model.bias ?? 0) + standardized.reduce((sum, value, i) => sum + value * (weights[i] ?? 0), 0);
+      surfaceModelProbability = Number(sigmoid(logit).toFixed(4));
+    }
+  } catch {
+    // Keep fallback if model is unreadable.
+  }
+
   return {
     surfaceScore,
     surfaceBand: surfaceBandForScore(surfaceScore),
     surfaceReasons: reasons.length ? reasons : ["GDELT/model signal only"],
     surfaceRadius: Math.max(3, Math.min(11, Math.round(surfaceScore / 10))),
-    surfaceModelProbability: Number((surfaceScore / 100).toFixed(4)),
+    surfaceModelProbability,
   };
 }
 
@@ -761,6 +783,26 @@ function filterEventsByDatasetWindow(events: GdeltEvent[], days: number): GdeltE
 
 async function loadEscalationModel(): Promise<any | null> {
   if (modelCache && Date.now() - modelCache.ts < CACHE_TTL) return modelCache.data;
+
+  // Prefer the supervised model if it exists and meets a quality gate.
+  const supervisedPaths = [
+    join(process.cwd(), "data/models/escalation-model-supervised-latest.json"),
+    join(MODULE_DIR, "../data/models/escalation-model-supervised-latest.json"),
+  ];
+  for (const path of supervisedPaths) {
+    try {
+      const text = await fs.readFile(path, "utf8");
+      const data = JSON.parse(text);
+      const auc = data.metrics?.test?.auc ?? 0;
+      const f1 = data.metrics?.test?.f1 ?? 0;
+      if (auc >= 0.80 && f1 >= 0.70) {
+        modelCache = { data, ts: Date.now() };
+        return data;
+      }
+    } catch {
+      // Fall through to champion model.
+    }
+  }
 
   const candidates = [
     join(process.cwd(), "public/data/escalation-model.json"),
@@ -1890,7 +1932,7 @@ function buildWhySurfaced(target: GdeltEvent, prediction: ModelPrediction | unde
     target.quadClass === 1 || target.quadClass === 2 ? "cooperation event class" : null,
     Number(target.numMentions ?? 0) >= 20 ? `${target.numMentions} media mentions` : null,
     Number(target.surfaceClusterSize ?? 0) > 1 ? `${target.surfaceClusterSize} related source rows in this cluster` : null,
-    prediction ? `trained model estimates ${Math.round(prediction.probability * 100)}% ${prediction.target} risk` : null,
+    prediction ? `trained model estimates ${Math.round(prediction.probability * 100)}% ${prediction.target} likelihood` : null,
     relatedSignals.length > 0 ? `${relatedSignals.length} related signals in the local event graph` : null,
     target.sourceUrl ? `source domain: ${hostFromUrl(target.sourceUrl) || "available"}` : "no source URL attached",
   ], 7);
@@ -2047,7 +2089,7 @@ function publicProbePack(pack: ProbePack) {
     })),
     prediction: pack.prediction ? {
       ...pack.prediction,
-      probability: Number((pack.prediction.probability * 100).toFixed(0)),
+      probability: Number(pack.prediction.probability.toFixed(4)),
       threshold: Number((pack.prediction.threshold * 100).toFixed(0)),
       metrics: pack.prediction.metrics,
     } : undefined,
@@ -2139,7 +2181,7 @@ function formatProbeForPrompt(pack: ProbePack): string {
     `SURFACING EXPLANATION\n${surface}`,
     `ROW UNCERTAINTY\n${uncertainty}`,
     pack.prediction
-      ? `TRAINED MODEL PREDICTION\nFuture critical escalation risk: ${Math.round(pack.prediction.probability * 100)}% (${pack.prediction.label}). Threshold: ${Math.round(pack.prediction.threshold * 100)}%. Model: ${pack.prediction.modelVersion}. Held-out metrics: ${JSON.stringify(pack.prediction.metrics ?? {})}. Top drivers: ${pack.prediction.drivers.map((d) => `${d.feature} ${d.direction} risk (${d.contribution})`).join(" | ")}`
+      ? `TRAINED MODEL PREDICTION\n${pack.prediction.target} likelihood: ${Math.round(pack.prediction.probability * 100)}% (${pack.prediction.label}). Threshold: ${Math.round(pack.prediction.threshold * 100)}%. Model: ${pack.prediction.modelVersion}. Held-out metrics: ${JSON.stringify(pack.prediction.metrics ?? {})}. Top drivers: ${pack.prediction.drivers.map((d) => `${d.feature} ${d.direction} likelihood (${d.contribution})`).join(" | ")}`
       : "TRAINED MODEL PREDICTION\nNo trained model artifact found.",
     `REVIEWER COPILOT\n${copilot}`,
     `SOURCE ARTICLE EVIDENCE\n${sourceBlock}`,
@@ -2216,7 +2258,7 @@ async function fetchOne(url: string): Promise<GdeltEvent[]> {
         continent: FIPS_CONTINENT[country] ?? "Other",
       };
 
-      events.push({ ...event, ...liveSurfaceMetadata(event) });
+      events.push({ ...event, ...await liveSurfaceMetadata(event, events) });
     }
 
     return events;

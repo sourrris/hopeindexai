@@ -158,7 +158,16 @@ function simpleWarningText(warning) {
 }
 
 function eventSignalScore(event) {
-  return Number.isFinite(event.surfaceScore) ? event.surfaceScore : event.markerRadius * 10;
+  return Number.isFinite(event.surfaceScore) ? event.surfaceScore : null;
+}
+
+function formatSignalScore(event) {
+  const score = eventSignalScore(event);
+  return score === null ? "Unscored" : String(Math.round(score));
+}
+
+function rankSignalScore(event) {
+  return eventSignalScore(event) ?? -Infinity;
 }
 
 function eventDisplayRadius(event) {
@@ -188,7 +197,7 @@ function eventDangerScore(event) {
   const tone = Number.isFinite(event.avgTone) ? Math.max(0, Math.abs(Math.min(0, event.avgTone)) * 1.4) : 0;
   const mentions = Math.min(8, Math.log1p(Number(event.numMentions ?? 0)) * 1.7);
   const model = Number.isFinite(event.surfaceModelProbability) ? event.surfaceModelProbability * 6 : 0;
-  return clampScore(surface * 0.22 + severity + conflict + goldstein + tone + mentions + model);
+  return clampScore((surface ?? 0) * 0.22 + severity + conflict + goldstein + tone + mentions + model);
 }
 
 function eventRippleScore(event) {
@@ -671,12 +680,12 @@ function MapView({ events, selectedEvent, onSelectEvent }) {
     layerRef.current.clearLayers();
 
     // Sort ascending so most significant render on top in SVG layer order
-    const sorted = [...events].sort((a, b) => eventSignalScore(a) - eventSignalScore(b));
+    const sorted = [...events].sort((a, b) => rankSignalScore(a) - rankSignalScore(b));
 
     // Top 5 surfaced events get an SVG pulse ring colored by theme
     const topEventIds = new Set(
       events
-        .sort((a, b) => eventSignalScore(b) - eventSignalScore(a))
+        .sort((a, b) => rankSignalScore(b) - rankSignalScore(a))
         .slice(0, 5)
         .map((e) => e.id)
     );
@@ -700,7 +709,7 @@ function MapView({ events, selectedEvent, onSelectEvent }) {
         : ev.quadLabel;
 
       marker.bindTooltip(
-        `<strong>[${ev.theme}] ${actorLine}</strong><br/>${ev.location || ev.country}<br/>Signal: <strong>${Math.round(eventSignalScore(ev))}</strong>`,
+        `<strong>[${ev.theme}] ${actorLine}</strong><br/>${ev.location || ev.country}<br/>Signal: <strong>${formatSignalScore(ev)}</strong>`,
         { sticky: true, direction: "top", html: true }
       );
       marker.on("click", () => onSelectEvent(ev));
@@ -861,10 +870,12 @@ function FilterPanel({ filters, onFilter, filteredEvents, selectedEvent, onSelec
 
 function EventRow({ event, selected, onClick }) {
   const title = eventTitle(event);
-  const signalScore = Math.round(eventSignalScore(event));
+  const signalScore = eventSignalScore(event);
+  const scoreLabel = formatSignalScore(event);
+  const hasScore = signalScore !== null;
 
-  const scoreColor = signalScore >= 72 ? "#DC2626" : signalScore >= 52 ? "#D97706" : "#6B7280";
-  const scoreBg    = signalScore >= 72 ? "rgba(239,68,68,.12)" : signalScore >= 52 ? "rgba(245,158,11,.12)" : "rgba(107,114,128,.12)";
+  const scoreColor = !hasScore ? "#6B7280" : signalScore >= 72 ? "#DC2626" : signalScore >= 52 ? "#D97706" : "#6B7280";
+  const scoreBg    = !hasScore ? "rgba(107,114,128,.12)" : signalScore >= 72 ? "rgba(239,68,68,.12)" : signalScore >= 52 ? "rgba(245,158,11,.12)" : "rgba(107,114,128,.12)";
 
   return (
     <div
@@ -891,7 +902,7 @@ function EventRow({ event, selected, onClick }) {
         marginLeft: "8px",
         flexShrink: 0
       }}>
-        {signalScore}
+        {scoreLabel}
       </span>
     </div>
   );
@@ -1068,7 +1079,7 @@ function IntelPacket({ event, dataSource }) {
           <div className="intel-block-label">Trained Prediction</div>
           <div className="model-risk-head">
             <div>
-              <div className={`model-risk-value ${prediction.label}`}>{prediction.probability}%</div>
+              <div className={`model-risk-value ${prediction.label}`}>{Math.round(prediction.probability * 100)}%</div>
               <div className="model-risk-sub">critical escalation risk in 72h</div>
             </div>
             <div className="model-metrics">
@@ -2147,7 +2158,7 @@ function App() {
       return true;
     })
     .sort((a, b) =>
-      eventSignalScore(b) - eventSignalScore(a) ||
+      rankSignalScore(b) - rankSignalScore(a) ||
       Number(b.numMentions ?? 0) - Number(a.numMentions ?? 0)
     ), [events, filters.continent, filters.category]);
 

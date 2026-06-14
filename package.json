@@ -10,7 +10,11 @@
     "start": "bun server.ts",
     "sync": "bun scripts/sync.ts",
     "enrich": "bun pipeline/enrich.ts",
+    "enrich:historical": "bun pipeline/enrich_historical.ts",
     "train": "bun pipeline/train.ts",
+    "train:supervised": "bun pipeline/train_supervised.ts",
+    "labels:build": "bun scripts/build_supervised_labels.ts",
+    "ml:autonomous": "bun scripts/orchestrate_autonomous_pipeline.ts",
     "surface:phase1": "bun scripts/calibrate_phase1_surface.ts",
     "review:phase1:codex": "bun scripts/apply_phase1_codex_review.ts",
     "review:phase1:codex-source": "bun scripts/apply_phase1_codex_source_reviews.ts",
@@ -30,6 +34,7 @@
     "match:ucdp-candidate": "bun scripts/match_ucdp_candidate_events.ts",
     "eval:phase1": "bun scripts/eval_phase1.ts",
     "ontology:validate": "bun scripts/validate_ontology_phase1.ts",
+    "pipeline:validate": "bun scripts/validate_pipeline.ts",
     "typecheck": "tsc --noEmit",
     "test:smoke": "bun scripts/smoke_api.ts",
     "test:all": "bun run typecheck && bun run test:smoke && bun run ontology:validate && bun run eval:phase1",
@@ -41,6 +46,7 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
+    "playwright": "^1.60.0",
     "typescript": "^5.9.3"
   }
 }

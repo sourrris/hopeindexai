@@ -585,77 +585,85 @@ function scoreSurfaceEvent(event: GdeltEvent, events: GdeltEvent[], model: Model
     : null;
   const probability = modelProbability(event, events, model);
 
-  let score = 18 + probability * 42 + baseImportanceScore(event);
+  // The surface score is primarily model-driven. The model already consumes
+  // goldstein, mentions, severity, theme, and temporal context, so we avoid
+  // double-counting those with a fixed base score. Rule boosts/penalties act
+  // as small guardrails and are capped to prevent the diplomatic/strategic
+  // actor inflation seen in the original scoring.
+  let score = Math.round(probability * 100);
+  let adjustment = 0;
 
   if (strategic) {
-    score += 18;
+    adjustment += 8;
     reasons.push("strategic actor or theater");
   }
   if (directEvent) {
-    score += 9;
+    adjustment += 4;
     reasons.push("direct event wording");
   }
   if (governance) {
-    score += 10;
+    adjustment += 5;
     reasons.push("governance or public-safety signal");
   }
   if (event.theme === "Diplomacy" && event.category === "bloom" && event.numMentions >= 25) {
-    score += 8;
+    adjustment += 3;
     reasons.push("high-mention diplomacy");
   }
   if (event.theme === "Humanitarian" && event.numMentions >= 20) {
-    score += 6;
+    adjustment += 2;
     reasons.push("humanitarian/public-safety signal");
   }
   if (event.continent === "Middle East" && strategic) {
-    score += 4;
+    adjustment += 2;
     reasons.push("high-risk regional context");
   }
   if (event.numMentions <= 1 && !strategic && !governance) {
-    score -= 12;
+    adjustment -= 8;
     penalties.push("single-mention weak signal");
   }
   if (localCrime) {
-    score -= 30;
+    adjustment -= 25;
     penalties.push("local crime pattern");
   }
   if (localPublicSafety) {
-    score -= 42;
+    adjustment -= 30;
     penalties.push("local public-safety/accident pattern");
   }
   if (genericTitle && !directEvent) {
-    score -= 28;
+    adjustment -= 18;
     penalties.push("generic GDELT extraction");
   }
   if (entertainmentHistory) {
-    score -= 42;
+    adjustment -= 30;
     penalties.push("entertainment/history extraction noise");
   }
   if (backgroundNoise) {
-    score -= 34;
+    adjustment -= 24;
     penalties.push("background or source-mismatch article");
   }
   if (localNews && !directEvent && !strategic) {
-    score -= 26;
+    adjustment -= 18;
     penalties.push("local-news source pattern");
   }
   if (opinion && !strategic) {
-    score -= 16;
+    adjustment -= 10;
     penalties.push("opinion/background article");
   } else if (opinion) {
-    score -= 8;
+    adjustment -= 5;
     penalties.push("analysis/opinion source");
   }
   if (rank > 0) {
-    score -= rank === 1 ? 36 : 46;
+    adjustment -= rank === 1 ? 22 : 28;
     penalties.push("duplicate source row");
   }
   if (event.actor1 === event.actor2 && event.actor1 !== "Unknown") {
-    score -= 6;
+    adjustment -= 4;
     penalties.push("same actor on both sides");
   }
 
-  score = clamp(score, 0, 100);
+  // Cap the rule adjustment so the model remains the dominant signal.
+  adjustment = clamp(adjustment, -30, 20);
+  score = clamp(score + adjustment, 0, 100);
   if (reasons.length === 0) reasons.push("GDELT/model signal only");
   const band = score >= 72 ? "lead" : score >= 52 ? "watch" : "background";
   const radius = round(3 + (score / 100) * 8, 1);

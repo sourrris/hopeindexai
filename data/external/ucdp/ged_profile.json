@@ -1,6 +1,6 @@
 {
   "schemaVersion": "external-profile.ucdp-ged.v1",
-  "generatedAt": "2026-06-10T18:22:03.208Z",
+  "generatedAt": "2026-06-14T07:44:20.804Z",
   "sourcePath": "data/external/ucdp/GEDEvent_v26_1.csv",
   "outputPath": "data/external/ucdp/ged_events_compact.jsonl",
   "dataset": {
@@ -12,8 +12,8 @@
   "rows": 417968,
   "columns": 49,
   "dateRange": {
-    "min": "1989-01-01 00:00:00.000",
-    "max": "2025-12-31 00:00:00.000"
+    "min": "1989-01-01",
+    "max": "2025-12-31"
   },
   "yearRange": {
     "min": 1989,

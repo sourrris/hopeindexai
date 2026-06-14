@@ -1,0 +1,13 @@
+{
+  "generatedAt": "2026-06-14T07:44:23.742Z",
+  "total": 1500,
+  "positives": 2,
+  "negatives": 1498,
+  "positiveRate": 0.0013333333333333333,
+  "bySource": {
+    "ucdp_ged": 5,
+    "ucdp_negative": 1495
+  },
+  "outputPath": "data/training/supervised_labels.jsonl",
+  "note": "Labels derived from UCDP GED + Candidate matches. Positive = matched UCDP event with deaths >= 5 within +/-3 days and 300 km. Negative = no match or low-death match."
+}
