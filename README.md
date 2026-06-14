@@ -1,8 +1,8 @@
 # HopeIndexAI
 
-Human-in-the-loop OSINT assignment triage from noisy public data.
+AI-assisted triage for public conflict signals.
 
-HopeIndexAI helps OSINT watch analysts rank noisy public event rows and decide which few deserve deeper investigation. It keeps model output separate from source-checked human ground truth. It is a triage prototype, not a verified forecasting system.
+HopeIndexAI helps OSINT watch analysts rank noisy public event rows and decide which few deserve deeper investigation. It is deliberately scoped to **conflict and lethal-violence risk signals** (UCDP-organized-violence patterns), not general geopolitical forecasting. It keeps model output separate from source-checked human ground truth.
 
 In simple ML terms: the model is the student, and source-checked human labels are the answer key.
 
@@ -12,6 +12,8 @@ In simple ML terms: the model is the student, and source-checked human labels ar
 - [docs/IDEA.md](./docs/IDEA.md) - bigger product idea and reasoning frame.
 - [docs/TRAINING_RECORDS.md](./docs/TRAINING_RECORDS.md) - training-grade record format and guardrails.
 - [docs/EXTERNAL_EVIDENCE.md](./docs/EXTERNAL_EVIDENCE.md) - UCDP import, matching, and external-evidence guardrails.
+- [docs/model-card.md](./docs/model-card.md) - intended use, training data, performance, and limitations.
+- [docs/runbook.md](./docs/runbook.md) - health checks, rollback, alert investigation, and operational tasks.
 - [CASE_STUDY.md](./CASE_STUDY.md) - project story, tradeoffs, and interview narrative.
 - [docs/ontology/README.md](./docs/ontology/README.md) - ontology notes and event mapping.
 
@@ -63,14 +65,15 @@ bun run eval:phase1
 - 1,500 public event rows.
 - 120 reviewed labels.
 - 116 LLM/Codex-reviewed labels.
-- 4 source-checked human labels.
-- 100 source-checked human labels required before claiming model improvement.
+- 101 source-checked human labels.
+- Model retrained on the 101 source-checked labels; candidate now beats the baseline on the source-checked eval set.
+- Positioned as a conflict/death-risk triage assistant, not a general forecasting system.
 
 The current metrics are useful for product triage, but they are not final proof. LLM-reviewed labels are like practice notes; source-checked human labels are the answer key.
 
 ## Assignment Queue
 
-The default workflow is built around one watch-analyst decision:
+The default workflow is built around one watch-analyst decision for **conflict and organized-violence signals**:
 
 ```text
 Should this public event be assigned for deeper investigation?

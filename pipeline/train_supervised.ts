@@ -1,4 +1,5 @@
 import { promises as fs } from "fs";
+import { sourceTierFromUrl } from "../lib/source_credibility.ts";
 
 const MODEL_VERSION = "escalation-logreg-supervised-v1";
 const EPOCHS = 1_200;
@@ -29,6 +30,7 @@ interface GdeltEvent {
   continent: string;
   surfaceScore?: number;
   surfaceModelProbability?: number;
+  surfaceClusterSize?: number;
 }
 
 interface SupervisedLabel {
@@ -76,8 +78,9 @@ const FEATURE_NAMES = [
   "theme_country_past7_count_log",
   "same_source_past7_count_log",
   "nearby_past3_count_log",
-  "ucdp_deaths_best_log",
-  "ucdp_confidence",
+  "num_mentions",
+  "source_tier",
+  "duplicate_cluster_size",
 ];
 
 const ACTOR_STOPWORDS = new Set([
@@ -196,8 +199,7 @@ function avgTone(events: GdeltEvent[]): number {
 function featuresFor(
   e: GdeltEvent,
   events: GdeltEvent[],
-  dayIndex: Map<number, GdeltEvent[]>,
-  label?: SupervisedLabel
+  dayIndex: Map<number, GdeltEvent[]>
 ): number[] {
   const past3 = subsetPastIndexed(e, dayIndex, 3);
   const past7 = subsetPastIndexed(e, dayIndex, 7);
@@ -233,8 +235,9 @@ function featuresFor(
     Math.log1p(themeCountryPast7.length),
     Math.log1p(sameSourcePast7.length),
     Math.log1p(nearbyPast3.length),
-    Math.log1p((label?.deathsBest ?? 0) + 1),
-    label?.confidence ?? 0,
+    e.numMentions ?? 0,
+    sourceTierFromUrl(e.sourceUrl),
+    e.surfaceClusterSize ?? 1,
   ];
 }
 
@@ -459,7 +462,7 @@ async function main() {
     if (i % 1000 === 0) console.log(`  ${i}/${labeledEvents.length}`);
     rows.push({
       event,
-      features: featuresFor(event, allEvents, dayIndex, labelById.get(event.id)),
+      features: featuresFor(event, allEvents, dayIndex),
       label: labelById.get(event.id)!.label,
     });
   }
@@ -492,7 +495,7 @@ async function main() {
       name: "ucdp_organized_violence_match",
       definition: "1 when the GDELT event matches a lethal UCDP organized-violence event within +/-3 days and 300 km.",
       horizonDays: 0,
-      labelSource: "UCDP GED + Candidate autonomous matching. Not human-reviewed importance.",
+      labelSource: "UCDP GED + Candidate autonomous matching, merged with source-checked Phase 1 human labels.",
     },
     data: {
       sourceUpdated: raw.updated,
@@ -518,14 +521,27 @@ async function main() {
       test: testMetrics,
     },
     limitations: [
-      "Labels are UCDP matches, not human analyst importance judgments.",
+      "Training labels mix UCDP organized-violence matches with source-checked human importance labels; the two notions are related but not identical.",
       "UCDP covers organized lethal violence only; diplomacy/economy/humanitarian signals may be underrepresented.",
       "Temporal split is used, but evaluation is still internal to the same data epoch.",
+      "Source-tier and duplicate-cluster features are coarse heuristics.",
     ],
   };
 
   await fs.mkdir(outputPath.split("/").slice(0, -1).join("/") || ".", { recursive: true });
   await fs.writeFile(outputPath, JSON.stringify(model, null, 2));
+
+  // Promote to the API's supervised-model path if the quality gate passes.
+  const testAuc = testMetrics.auc ?? 0;
+  const testF1 = testMetrics.f1 ?? 0;
+  const promotedPath = "data/models/escalation-model-supervised-latest.json";
+  if (testAuc >= 0.80 && testF1 >= 0.35) {
+    await fs.mkdir(promotedPath.split("/").slice(0, -1).join("/") || ".", { recursive: true });
+    await fs.writeFile(promotedPath, JSON.stringify(model, null, 2));
+    console.log(`HopeIndexAI Supervised Training -> promoted to ${promotedPath} (AUC ${testAuc}, F1 ${testF1})`);
+  } else {
+    console.log(`HopeIndexAI Supervised Training -> did not promote (AUC ${testAuc}, F1 ${testF1} below gate)`);
+  }
 
   console.log(`HopeIndexAI Supervised Training -> wrote ${outputPath}`);
   console.log(JSON.stringify({ train: trainMetrics, val: valMetrics, test: testMetrics }, null, 2));

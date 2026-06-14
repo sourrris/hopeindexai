@@ -1,6 +1,6 @@
 {
   "schemaVersion": "external-profile.ucdp-ged.v1",
-  "generatedAt": "2026-06-14T07:44:20.804Z",
+  "generatedAt": "2026-06-14T09:26:27.589Z",
   "sourcePath": "data/external/ucdp/GEDEvent_v26_1.csv",
   "outputPath": "data/external/ucdp/ged_events_compact.jsonl",
   "dataset": {

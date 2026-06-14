@@ -109,9 +109,56 @@ function distanceKm(a, b) {
 }
 
 function eventTitle(event) {
+  if (event.title && event.title.trim().length > 0) {
+    return event.title.trim();
+  }
   return event.actor1 !== "Unknown"
     ? `${event.actor1}${event.actor2 && event.actor2 !== "Unknown" ? " -> " + event.actor2 : ""}`
     : event.quadLabel;
+}
+
+function formatModelTarget(target) {
+  if (!target) return "Model prediction";
+  return String(target).replace(/_/g, " ");
+}
+
+const TIER_1_DOMAINS = new Set([
+  "reuters.com", "apnews.com", "afp.com", "france24.com", "bbc.com", "bbc.co.uk",
+  "nytimes.com", "washingtonpost.com", "wsj.com", "ft.com", "theguardian.com",
+  "economist.com", "bloomberg.com", "aljazeera.com", "dw.com", "npr.org", "pbs.org",
+  "politico.com", "axios.com", "cbsnews.com", "nbcnews.com", "abcnews.go.com",
+  "cnn.com", "usatoday.com", "latimes.com", "time.com", "foreignpolicy.com", "irinnews.org",
+]);
+
+const TIER_3_DOMAINS = new Set([
+  "presstv.ir", "sana.sy", "rt.com", "rttnews.com", "russiaherald.com", "caribbeanherald.com",
+  "tass.com", "xinhuanet.com", "globaltimes.cn", "chinadaily.com.cn", "sputniknews.com",
+  "telesurenglish.net", "prensa-latina.cu", "newkerala.com", "freepressjournal.in",
+  "promptnewsonline.com", "sofiaglobe.com", "azertag.az", "albawaba.com", "globalsecurity.org",
+  "wandtv.com", "wpbf.com", "local3news.com", "mandurahmail.com.au", "newcastleherald.com.au",
+  "harrowtimes.co.uk", "cbs19.tv", "9news.com", "nypost.com",
+]);
+
+function hostFromUrl(url) {
+  try {
+    return new URL(url).hostname.toLowerCase().replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
+
+function sourceTierForUrl(url) {
+  const host = hostFromUrl(url);
+  if (!host) return 2;
+  if (TIER_1_DOMAINS.has(host)) return 1;
+  if (TIER_3_DOMAINS.has(host)) return 3;
+  return 2;
+}
+
+function sourceTierLabel(tier) {
+  if (tier === 1) return "Tier 1 — trusted major outlet";
+  if (tier === 3) return "Tier 3 — state/aggregator/farm";
+  return "Tier 2 — regional/unknown";
 }
 
 function simpleEventTitle(event) {
@@ -950,6 +997,9 @@ function AiAnalysis({ event, apiKey }) {
           </button>
         )}
       </div>
+      <div className="ai-scope-note" style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 10, lineHeight: 1.4 }}>
+        Model scope: estimates the likelihood that this event corresponds to a verified lethal organized-violence incident (UCDP, ≥5 deaths). Not a general importance score.
+      </div>
       {loading && (
         <div className="ai-thinking">
           <span className="ai-thinking-dot" />
@@ -1076,16 +1126,24 @@ function IntelPacket({ event, dataSource }) {
 
       {prediction && (
         <div className="intel-block model-prediction">
-          <div className="intel-block-label">Trained Prediction</div>
+          <div className="intel-block-label">
+            Trained Prediction
+            <span className="model-scope-badge" title="What the model is predicting">
+              {formatModelTarget(prediction.target)}
+            </span>
+          </div>
           <div className="model-risk-head">
             <div>
               <div className={`model-risk-value ${prediction.label}`}>{Math.round(prediction.probability * 100)}%</div>
-              <div className="model-risk-sub">critical escalation risk in 72h</div>
+              <div className="model-risk-sub">{formatModelTarget(prediction.target)}</div>
             </div>
             <div className="model-metrics">
               <span>Test AUC {Math.round((prediction.metrics?.auc || 0) * 100)}%</span>
               <span>Accuracy {Math.round((prediction.metrics?.accuracy || 0) * 100)}%</span>
             </div>
+          </div>
+          <div className="model-scope-note" style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 8, lineHeight: 1.4 }}>
+            This model estimates the likelihood that the event corresponds to a verified lethal organized-violence incident (UCDP, ≥5 deaths). It is not a general importance score.
           </div>
           <div className="model-driver-list">
             {(prediction.drivers || []).slice(0, 4).map((driver) => (
@@ -1166,6 +1224,26 @@ function EventDetail({ event, events, onClose, onSelectEvent, apiKey, aiReady, d
   }, [onClose]);
 
   const title = eventTitle(event);
+  const [feedbackStatus, setFeedbackStatus] = useState("");
+
+  const submitFeedback = async (decision) => {
+    setFeedbackStatus("sending");
+    try {
+      const res = await fetch("/api/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ eventId: event.id, decision }),
+      });
+      if (res.ok) {
+        setFeedbackStatus(`Thanks — marked ${decision.replace(/_/g, " ")}.`);
+      } else {
+        const data = await res.json();
+        setFeedbackStatus(data.error || "Failed to save feedback.");
+      }
+    } catch (err) {
+      setFeedbackStatus(err.message || "Failed to save feedback.");
+    }
+  };
 
   const hopeScore = event.hopeScore ?? 50;
   const strokeDash = (hopeScore / 100) * 125.6; // circumference (2 * PI * R where R=20 is 125.6)
@@ -1271,6 +1349,21 @@ function EventDetail({ event, events, onClose, onSelectEvent, apiKey, aiReady, d
                 <div className="dfield-val">{event.numMentions.toLocaleString()} media mentions</div>
               </div>
             )}
+
+            {typeof event.surfaceScore === "number" && (
+              <div style={{ display: "flex", gap: "20px" }}>
+                <div style={{ flex: 1 }}>
+                  <div className="dfield-label">Triage Rank</div>
+                  <div className="dfield-val">#{event.surfaceRank} · {event.surfaceBand} · {event.surfaceScore}/100</div>
+                  <div className="intel-muted">Surface score is a ranking aid, not a probability.</div>
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div className="dfield-label">Model Probability</div>
+                  <div className="dfield-val">{Math.round((event.surfaceModelProbability ?? 0) * 100)}%</div>
+                  <div className="intel-muted">UCDP organized-violence match likelihood.</div>
+                </div>
+              </div>
+            )}
           </div>
 
           {event.sourceUrl && (
@@ -1278,6 +1371,31 @@ function EventDetail({ event, events, onClose, onSelectEvent, apiKey, aiReady, d
               Source Article <IconExternalLink />
             </a>
           )}
+
+          <div className="detail-fields" style={{ marginTop: -12 }}>
+            <div style={{ display: "flex", gap: "20px" }}>
+              <div style={{ flex: 1 }}>
+                <div className="dfield-label">Source Credibility</div>
+                <div className="dfield-val">{sourceTierLabel(sourceTierForUrl(event.sourceUrl))}</div>
+              </div>
+              {typeof event.extractionConfidence === "number" && (
+                <div style={{ flex: 1 }}>
+                  <div className="dfield-label">Extraction Confidence</div>
+                  <div className="dfield-val">{Math.round(event.extractionConfidence * 100)}%</div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="feedback-section" style={{ margin: "16px 0", padding: 12, border: "1px solid var(--border)", borderRadius: 8, background: "var(--bg-elevated)" }}>
+            <div className="dfield-label" style={{ marginBottom: 8 }}>Reviewer Feedback</div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button className="feedback-btn fp" onClick={() => submitFeedback("false_positive")} disabled={feedbackStatus === "sending"}>False positive</button>
+              <button className="feedback-btn fn" onClick={() => submitFeedback("false_negative")} disabled={feedbackStatus === "sending"}>False negative</button>
+              <button className="feedback-btn good" onClick={() => submitFeedback("good_call")} disabled={feedbackStatus === "sending"}>Good call</button>
+            </div>
+            {feedbackStatus && <div className="feedback-status" style={{ marginTop: 8, fontSize: 12, color: "var(--text-muted)" }}>{feedbackStatus}</div>}
+          </div>
 
           <IntelPacket event={event} dataSource={dataSource} />
 

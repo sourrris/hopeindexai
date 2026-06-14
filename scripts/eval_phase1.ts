@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from "fs/promises";
 import { dirname } from "path";
+import { sourceTierFromUrl } from "../lib/source_credibility.ts";
 
 type Category = "doom" | "bloom";
 type Severity = "low" | "medium" | "high" | "critical";
@@ -25,6 +26,7 @@ interface GdeltEvent {
   markerRadius: number;
   severity: Severity;
   continent: string;
+  surfaceClusterSize?: number;
 }
 
 interface Phase1Label {
@@ -62,7 +64,8 @@ interface ScoredRow {
 }
 
 const EVENTS_PATH = "public/data/events.json";
-const MODEL_PATH = "public/data/escalation-model.json";
+const CHAMPION_MODEL_PATH = "public/data/escalation-model.json";
+const SUPERVISED_MODEL_PATH = "public/data/escalation-model-supervised.json";
 const LABEL_PATH = "data/eval/phase1_labels.jsonl";
 const REPORT_PATH = "data/eval/phase1_report.json";
 const MIN_HUMAN_LABELS_FOR_CLAIM = 100;
@@ -101,6 +104,9 @@ const FEATURE_NAMES = [
   "theme_country_past7_count_log",
   "same_source_past7_count_log",
   "nearby_past3_count_log",
+  "num_mentions",
+  "source_tier",
+  "duplicate_cluster_size",
 ];
 
 function round(n: number, digits = 4): number {
@@ -227,6 +233,9 @@ function featuresFor(event: GdeltEvent, events: GdeltEvent[]): number[] {
     Math.log1p(themeCountryPast7.length),
     Math.log1p(sameSourcePast7.length),
     Math.log1p(nearbyPast3.length),
+    event.numMentions ?? 0,
+    sourceTierFromUrl(event.sourceUrl),
+    event.surfaceClusterSize ?? 1,
   ];
 }
 
@@ -285,12 +294,16 @@ async function loadEvents(): Promise<{ events: GdeltEvent[]; updated?: string; c
   return { events: parsed.events, updated: parsed.updated, count: parsed.count };
 }
 
-async function loadModel(): Promise<ModelArtifact | null> {
-  try {
-    return JSON.parse(await readFile(MODEL_PATH, "utf8"));
-  } catch {
-    return null;
+async function loadModel(): Promise<{ model: ModelArtifact | null; path: string }> {
+  for (const path of [SUPERVISED_MODEL_PATH, CHAMPION_MODEL_PATH]) {
+    try {
+      const data = JSON.parse(await readFile(path, "utf8"));
+      return { model: data, path };
+    } catch {
+      // try next path
+    }
   }
+  return { model: null, path: CHAMPION_MODEL_PATH };
 }
 
 async function loadLabels(): Promise<Phase1Label[]> {
@@ -320,14 +333,14 @@ function baselinePrediction(event: GdeltEvent): { score: number; prediction: boo
   };
 }
 
-function candidatePrediction(event: GdeltEvent, events: GdeltEvent[], model: ModelArtifact | null): { score: number; prediction: boolean } | undefined {
+function candidatePrediction(event: GdeltEvent, events: GdeltEvent[], model: ModelArtifact | null, modelPath: string): { score: number; prediction: boolean } | undefined {
   if (!model?.featureNames || !model.preprocessing || !model.model) return undefined;
 
   const featureMismatch =
     model.featureNames.length !== FEATURE_NAMES.length ||
     model.featureNames.some((name, index) => name !== FEATURE_NAMES[index]);
   if (featureMismatch) {
-    throw new Error(`${MODEL_PATH} featureNames do not match the Phase 1 evaluator feature order.`);
+    throw new Error(`${modelPath} featureNames do not match the Phase 1 evaluator feature order.`);
   }
 
   const raw = featuresFor(event, events);
@@ -486,7 +499,7 @@ function buildVerdict(
 async function main() {
   const dataset = await loadEvents();
   const eventsById = new Map(dataset.events.map((event) => [event.id, event]));
-  const model = await loadModel();
+  const { model, path: modelPath } = await loadModel();
   const labels = await loadLabels();
 
   const missingEventIds: string[] = [];
@@ -503,7 +516,7 @@ async function main() {
       event,
       label,
       baseline: baselinePrediction(event),
-      candidate: candidatePrediction(event, dataset.events, model),
+      candidate: candidatePrediction(event, dataset.events, model, modelPath),
     });
   }
 
@@ -524,7 +537,7 @@ async function main() {
     paths: {
       events: EVENTS_PATH,
       labels: LABEL_PATH,
-      model: MODEL_PATH,
+      model: modelPath,
       report: REPORT_PATH,
     },
     data: {

@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from "fs/promises";
 import { dirname } from "path";
+import { sourceTierFromUrl } from "../lib/source_credibility.ts";
 
 type Category = "doom" | "bloom";
 type Severity = "low" | "medium" | "high" | "critical";
@@ -115,9 +116,22 @@ interface CoverageStats {
 
 const EVENTS_PATH = "public/data/events.json";
 const LABEL_PATH = "data/eval/phase1_labels.jsonl";
-const MODEL_PATH = "public/data/escalation-model.json";
+const CHAMPION_MODEL_PATH = "public/data/escalation-model.json";
+const SUPERVISED_MODEL_PATH = "public/data/escalation-model-supervised.json";
 const POLICY_PATH = "public/data/surfacing-policy.json";
 const REPORT_PATH = "data/eval/phase1_surface_report.json";
+
+async function loadModel(): Promise<{ model: ModelArtifact | null; path: string }> {
+  for (const path of [SUPERVISED_MODEL_PATH, CHAMPION_MODEL_PATH]) {
+    try {
+      const data = JSON.parse(await readFile(path, "utf8"));
+      return { model: data, path };
+    } catch {
+      // try next path
+    }
+  }
+  return { model: null, path: CHAMPION_MODEL_PATH };
+}
 
 function printHelp() {
   console.log(`HopeIndexAI Phase 1 surfacing calibration
@@ -159,6 +173,9 @@ const FEATURE_NAMES = [
   "theme_country_past7_count_log",
   "same_source_past7_count_log",
   "nearby_past3_count_log",
+  "num_mentions",
+  "source_tier",
+  "duplicate_cluster_size",
 ];
 
 const ACTOR_STOPWORDS = new Set([
@@ -383,15 +400,18 @@ function featuresFor(event: GdeltEvent, events: GdeltEvent[]): number[] {
     Math.log1p(themeCountryPast7.length),
     Math.log1p(sameSourcePast7.length),
     Math.log1p(nearbyPast3.length),
+    event.numMentions ?? 0,
+    sourceTierFromUrl(event.sourceUrl),
+    event.surfaceClusterSize ?? 1,
   ];
 }
 
-function modelProbability(event: GdeltEvent, events: GdeltEvent[], model: ModelArtifact | null): number {
+function modelProbability(event: GdeltEvent, events: GdeltEvent[], model: ModelArtifact | null, modelPath: string): number {
   if (!model?.featureNames || !model.preprocessing || !model.model) return 0.5;
   const mismatch =
     model.featureNames.length !== FEATURE_NAMES.length ||
     model.featureNames.some((name, index) => name !== FEATURE_NAMES[index]);
-  if (mismatch) throw new Error(`${MODEL_PATH} featureNames do not match surfacing feature order.`);
+  if (mismatch) throw new Error(`${modelPath} featureNames do not match surfacing feature order.`);
 
   const raw = featuresFor(event, events);
   const means = model.preprocessing.means ?? [];
@@ -563,7 +583,7 @@ function buildEventUncertainty(row: ScoredEvent, cluster: EventClusterAssignment
   };
 }
 
-function scoreSurfaceEvent(event: GdeltEvent, events: GdeltEvent[], model: ModelArtifact | null, clusters: Map<string, GdeltEvent[]>): ScoredEvent {
+function scoreSurfaceEvent(event: GdeltEvent, events: GdeltEvent[], model: ModelArtifact | null, modelPath: string, clusters: Map<string, GdeltEvent[]>): ScoredEvent {
   const reasons: string[] = [];
   const penalties: string[] = [];
   const text = urlText(event.sourceUrl);
@@ -583,7 +603,7 @@ function scoreSurfaceEvent(event: GdeltEvent, events: GdeltEvent[], model: Model
   const duplicateOf = rank > 0
     ? [...cluster].sort(compareClusterRepresentative)[0]?.id ?? null
     : null;
-  const probability = modelProbability(event, events, model);
+  const probability = modelProbability(event, events, model, modelPath);
 
   // The surface score is primarily model-driven. The model already consumes
   // goldstein, mentions, severity, theme, and temporal context, so we avoid
@@ -644,6 +664,10 @@ function scoreSurfaceEvent(event: GdeltEvent, events: GdeltEvent[], model: Model
   if (localNews && !directEvent && !strategic) {
     adjustment -= 18;
     penalties.push("local-news source pattern");
+  }
+  if (sourceTierFromUrl(event.sourceUrl) === 3 && !strategic) {
+    adjustment -= 6;
+    penalties.push("tier-3 source credibility");
   }
   if (opinion && !strategic) {
     adjustment -= 10;
@@ -971,7 +995,7 @@ async function main() {
   const labelById = new Map(labels.map((label) => [label.eventId, label]));
   const eventsById = new Map(events.map((event) => [event.id, event]));
   const coverageStats = buildCoverageStats(labels, eventsById);
-  const model: ModelArtifact | null = JSON.parse(await readFile(MODEL_PATH, "utf8"));
+  const { model, path: modelPath } = await loadModel();
 
   const clusters = new Map<string, GdeltEvent[]>();
   for (const event of events) {
@@ -981,7 +1005,7 @@ async function main() {
     clusters.set(key, existing);
   }
 
-  const scored = events.map((event) => scoreSurfaceEvent(event, events, model, clusters));
+  const scored = events.map((event) => scoreSurfaceEvent(event, events, model, modelPath, clusters));
   scored.sort((a, b) => b.score - a.score || Number(b.event.numMentions ?? 0) - Number(a.event.numMentions ?? 0));
   const incidentClusters = buildEventClusterAssignments(scored);
 
@@ -1082,7 +1106,7 @@ async function main() {
       watch: 52,
     },
     model: {
-      source: MODEL_PATH,
+      source: modelPath,
       version: model?.version ?? "unknown",
       threshold: modelThreshold,
     },

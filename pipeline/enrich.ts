@@ -1,6 +1,8 @@
 import { promises as fs } from "fs";
 import { join } from "path";
 import { inflateRawSync } from "zlib";
+import { fetchTitlesInBatches } from "../lib/article_fetch.ts";
+import { isNoisyActor, computeExtractionConfidence } from "../lib/actor_quality.ts";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -27,6 +29,8 @@ interface GdeltEvent {
   markerRadius: number;
   severity: "low" | "medium" | "high" | "critical";
   continent: string;
+  title?: string;
+  extractionConfidence?: number;
 }
 
 // ── Column Indices ────────────────────────────────────────────────────────────
@@ -84,6 +88,10 @@ const DAYS_TO_FETCH = 7;
 const N_FILES = 30; // 30 files over 7 days (much denser than before!)
 const ROWS_PER_FILE = 2000;
 const FETCH_TIMEOUT = 12000;
+
+const FETCH_TITLES = process.argv.slice(2).includes("--fetch-titles");
+const TITLE_CONCURRENCY = 20;
+const TITLE_TIMEOUT_MS = 8_000;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -372,6 +380,48 @@ function deduplicateEvents(events: GdeltEvent[]): GdeltEvent[] {
   return deduplicated;
 }
 
+function filterNoisyEvents(events: GdeltEvent[]): GdeltEvent[] {
+  const before = events.length;
+  const filtered = events.filter((e) => !isNoisyActor(e.actor1));
+  if (before !== filtered.length) {
+    console.log(`Pipeline -> Noise filter removed ${before - filtered.length} events with noisy actor1 strings.`);
+  }
+  return filtered;
+}
+
+async function applyTitleAndQuality(events: GdeltEvent[]): Promise<GdeltEvent[]> {
+  if (!FETCH_TITLES) {
+    // Still compute confidence from actors and source URL presence.
+    return events.map((e) => ({
+      ...e,
+      extractionConfidence: computeExtractionConfidence({ actor1: e.actor1, actor2: e.actor2, sourceUrl: e.sourceUrl }),
+    }));
+  }
+
+  const urls = events.map((e) => e.sourceUrl).filter((url) => url.startsWith("http"));
+  console.log(`Pipeline -> Fetching titles for ${urls.length} source URLs (concurrency=${TITLE_CONCURRENCY})...`);
+  const results = await fetchTitlesInBatches(urls, TITLE_CONCURRENCY, TITLE_TIMEOUT_MS, (done, total) => {
+    if (done % 100 === 0 || done === total) console.log(`  ${done}/${total} titles fetched`);
+  });
+
+  return events.map((e) => {
+    const fetched = results.get(e.sourceUrl);
+    const title = fetched?.title;
+    const sourceReachable = fetched ? fetched.ok : undefined;
+    return {
+      ...e,
+      title,
+      extractionConfidence: computeExtractionConfidence({
+        actor1: e.actor1,
+        actor2: e.actor2,
+        sourceUrl: e.sourceUrl,
+        title,
+        sourceReachable,
+      }),
+    };
+  });
+}
+
 // ── Optional LLM Enrichment via Claude ───────────────────────────────────────
 
 async function enrichWithLLM(events: GdeltEvent[]): Promise<GdeltEvent[]> {
@@ -492,8 +542,14 @@ async function runPipeline() {
     // 3. Run semantic clustering and deduplication
     const deduplicated = deduplicateEvents(allEvents);
 
+    // 3b. Reject rows with a noisy primary actor string
+    const filtered = filterNoisyEvents(deduplicated);
+
+    // 3c. Extract article titles and compute extraction confidence
+    const qualityEvents = await applyTitleAndQuality(filtered);
+
     // 4. Run LLM Enrichment for top global events
-    const enriched = await enrichWithLLM(deduplicated);
+    const enriched = await enrichWithLLM(qualityEvents);
 
     // 5. Sort final list and slice to limit size
     enriched.sort((a, b) => b.markerRadius - a.markerRadius);

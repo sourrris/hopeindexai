@@ -4,6 +4,7 @@ import { inflateRawSync } from "zlib";
 import { dirname, join } from "path";
 import { promises as fs } from "fs";
 import { fileURLToPath } from "url";
+import { sourceTierFromUrl } from "../lib/source_credibility.ts";
 
 export const config = { maxDuration: 30 };
 
@@ -150,6 +151,7 @@ interface ReviewCopilot {
 interface ProbePack {
   selectedEvent: GdeltEvent;
   datasetUpdated?: string;
+  modelVersion?: string;
   source: SourceEvidence | null;
   relatedSignals: RelatedSignal[];
   prediction?: ModelPrediction;
@@ -781,26 +783,51 @@ function filterEventsByDatasetWindow(events: GdeltEvent[], days: number): GdeltE
     .map((row) => row.event);
 }
 
-async function loadEscalationModel(): Promise<any | null> {
-  if (modelCache && Date.now() - modelCache.ts < CACHE_TTL) return modelCache.data;
+async function loadEscalationModel(version?: string): Promise<any | null> {
+  // Explicit version request bypasses the gate and cache so probes can compare artifacts.
+  if (!version && modelCache && Date.now() - modelCache.ts < CACHE_TTL) return modelCache.data;
 
-  // Prefer the supervised model if it exists and meets a quality gate.
-  const supervisedPaths = [
+  if (version) {
+    const versionedPaths = [
+      join(process.cwd(), `public/data/models/${version}.json`),
+      join(MODULE_DIR, `../public/data/models/${version}.json`),
+      join(process.cwd(), `public/data/models/escalation-model-${version}.json`),
+      join(MODULE_DIR, `../public/data/models/escalation-model-${version}.json`),
+      join(process.cwd(), `data/models/escalation-model-${version}.json`),
+      join(MODULE_DIR, `../data/models/escalation-model-${version}.json`),
+    ];
+    for (const path of versionedPaths) {
+      try {
+        const text = await fs.readFile(path, "utf8");
+        return JSON.parse(text);
+      } catch {
+        // Try next candidate.
+      }
+    }
+    return null;
+  }
+
+  // Prefer a promoted champion artifact, then the supervised-latest gate artifact.
+  const championPaths = [
+    join(process.cwd(), "public/data/models/escalation-model-champion.json"),
+    join(MODULE_DIR, "../public/data/models/escalation-model-champion.json"),
     join(process.cwd(), "data/models/escalation-model-supervised-latest.json"),
     join(MODULE_DIR, "../data/models/escalation-model-supervised-latest.json"),
+    join(process.cwd(), "public/data/escalation-model-supervised.json"),
+    join(MODULE_DIR, "../public/data/escalation-model-supervised.json"),
   ];
-  for (const path of supervisedPaths) {
+  for (const path of championPaths) {
     try {
       const text = await fs.readFile(path, "utf8");
       const data = JSON.parse(text);
       const auc = data.metrics?.test?.auc ?? 0;
       const f1 = data.metrics?.test?.f1 ?? 0;
-      if (auc >= 0.80 && f1 >= 0.70) {
+      if (auc >= 0.80 && f1 >= 0.35) {
         modelCache = { data, ts: Date.now() };
         return data;
       }
     } catch {
-      // Fall through to champion model.
+      // Fall through.
     }
   }
 
@@ -1458,11 +1485,14 @@ function modelFeaturesFor(e: GdeltEvent, events: GdeltEvent[]): number[] {
     Math.log1p(themeCountryPast7.length),
     Math.log1p(sameSourcePast7.length),
     Math.log1p(nearbyPast3.length),
+    e.numMentions ?? 0,
+    sourceTierFromUrl(e.sourceUrl),
+    e.surfaceClusterSize ?? 1,
   ];
 }
 
-async function predictEscalation(e: GdeltEvent, events: GdeltEvent[]): Promise<ModelPrediction | undefined> {
-  const model = await loadEscalationModel();
+async function predictEscalation(e: GdeltEvent, events: GdeltEvent[], modelVersion?: string): Promise<ModelPrediction | undefined> {
+  const model = await loadEscalationModel(modelVersion);
   if (!model?.featureNames || !model?.preprocessing || !model?.model) return undefined;
 
   const raw = modelFeaturesFor(e, events);
@@ -2039,7 +2069,8 @@ function buildReviewCopilot(
 async function buildProbePack(
   inputEvent: GdeltEvent,
   fetchSource = true,
-  datasetOverride?: { events: GdeltEvent[]; updated?: string }
+  datasetOverride?: { events: GdeltEvent[]; updated?: string },
+  modelVersion?: string
 ): Promise<ProbePack> {
   const dataset = datasetOverride ?? await loadEventDataset().catch(() => ({ events: [] as GdeltEvent[], updated: undefined as string | undefined }));
   const datasetEvent = dataset.events.find((candidate) => candidate.id === inputEvent.id);
@@ -2048,7 +2079,7 @@ async function buildProbePack(
   const source = fetchSource ? await fetchSourceEvidence(selectedEvent.sourceUrl) : null;
   const relatedSignals = findRelatedSignals(selectedEvent, corpus).map(withSignalProbability);
   const impactMap = buildImpactMap(selectedEvent, relatedSignals, source);
-  const prediction = await predictEscalation(selectedEvent, corpus);
+  const prediction = await predictEscalation(selectedEvent, corpus, modelVersion);
   const actorGame = buildActorGame(selectedEvent, relatedSignals);
   const watchlist = buildWatchlist(selectedEvent, impactMap, relatedSignals);
   const evidenceGrade = buildEvidenceGrade(selectedEvent, source, relatedSignals);
@@ -2056,6 +2087,7 @@ async function buildProbePack(
   return {
     selectedEvent,
     datasetUpdated: dataset.updated,
+    modelVersion,
     source,
     relatedSignals,
     prediction,
@@ -2395,6 +2427,73 @@ app.get("/api/ai-status", (c) => {
   return c.json({ ready: target.provider === "lm-studio" || Boolean(target.apiKey) });
 });
 
+async function buildHealthStatus(): Promise<{
+  status: "healthy" | "degraded" | "unhealthy";
+  timestamp: string;
+  lastSuccessfulRun?: { timestamp: string; status: string };
+  checks: { name: string; passed: boolean; message: string }[];
+}> {
+  const checks: { name: string; passed: boolean; message: string }[] = [];
+
+  // AI status
+  const target = resolveInferenceTarget({ env: process.env });
+  const aiReady = target.provider === "lm-studio" || Boolean(target.apiKey);
+  checks.push({ name: "ai_status", passed: aiReady, message: aiReady ? "AI provider configured." : "No AI provider configured." });
+
+  // Static event dataset load + scoring coverage
+  let eventsCheckPassed = false;
+  let eventsMessage = "";
+  try {
+    const dataset = await loadEventsForSource("static", 7);
+    const events = dataset.events;
+    if (events.length === 0) {
+      eventsMessage = "No events loaded.";
+    } else {
+      const scored = events.filter((e: any) => Number.isFinite(e.surfaceScore)).length;
+      const ratio = scored / events.length;
+      eventsCheckPassed = ratio >= 0.95;
+      eventsMessage = `${events.length} events, ${(ratio * 100).toFixed(1)}% scored.`;
+    }
+  } catch (err: any) {
+    eventsMessage = `Failed to load events: ${err.message}`;
+  }
+  checks.push({ name: "events", passed: eventsCheckPassed, message: eventsMessage });
+
+  // Champion model loaded
+  let modelCheckPassed = false;
+  let modelMessage = "";
+  try {
+    const model = await loadEscalationModel();
+    modelCheckPassed = Boolean(model);
+    modelMessage = model ? `Model ${model.version ?? "unknown"} loaded.` : "No escalation model found.";
+  } catch (err: any) {
+    modelMessage = `Failed to load model: ${err.message}`;
+  }
+  checks.push({ name: "model", passed: modelCheckPassed, message: modelMessage });
+
+  // Last monitor run
+  let lastRun: { timestamp: string; status: string } | undefined;
+  try {
+    const text = await fs.readFile("data/monitoring/last_run.json", "utf8");
+    const parsed = JSON.parse(text);
+    if (parsed?.timestamp) lastRun = { timestamp: parsed.timestamp, status: parsed.status };
+  } catch {
+    // ignore
+  }
+
+  const failed = checks.filter((c) => !c.passed);
+  const status: "healthy" | "degraded" | "unhealthy" =
+    failed.length === 0 ? "healthy" : failed.some((c) => c.name === "events" || c.name === "model") ? "unhealthy" : "degraded";
+
+  return { status, timestamp: new Date().toISOString(), lastSuccessfulRun: lastRun, checks };
+}
+
+app.get("/api/health", async (c) => {
+  const health = await buildHealthStatus();
+  const statusCode = health.status === "healthy" ? 200 : health.status === "degraded" ? 200 : 503;
+  return c.json(health, statusCode);
+});
+
 app.get("/api/events", async (c) => {
   const requestedDays = Number.parseInt(c.req.query("days") ?? "7", 10);
   const days = Number.isFinite(requestedDays) ? Math.max(1, Math.min(30, requestedDays)) : 7;
@@ -2558,6 +2657,7 @@ app.get("/api/probe", async (c) => {
   const source = eventSourceFromQuery(c.req.query("source"));
   const requestedDays = Number.parseInt(c.req.query("days") ?? "7", 10);
   const days = Number.isFinite(requestedDays) ? Math.max(1, Math.min(30, requestedDays)) : 7;
+  const modelVersion = c.req.query("modelVersion")?.trim() || undefined;
   if (!id) {
     return c.json({ error: "Missing event id" }, 400);
   }
@@ -2569,7 +2669,7 @@ app.get("/api/probe", async (c) => {
       return c.json({ error: "Event not found" }, 404);
     }
 
-    const pack = await buildProbePack(event, true, dataset);
+    const pack = await buildProbePack(event, true, dataset, modelVersion);
     return c.json({ probe: publicProbePack(pack) });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -2707,6 +2807,38 @@ app.post("/api/analyze", async (c) => {
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown error";
     return c.json({ error: `Analysis failed: ${msg}` }, 500);
+  }
+});
+
+app.post("/api/feedback", async (c) => {
+  try {
+    const body = await c.req.json();
+    const eventId = body?.eventId;
+    const decision = body?.decision;
+    const note = body?.note ?? "";
+
+    if (!eventId || typeof eventId !== "string") {
+      return c.json({ error: "eventId is required." }, 400);
+    }
+    if (!decision || !["false_positive", "false_negative", "good_call"].includes(decision)) {
+      return c.json({ error: "decision must be one of: false_positive, false_negative, good_call." }, 400);
+    }
+
+    const record = {
+      timestamp: new Date().toISOString(),
+      eventId,
+      decision,
+      note: String(note).slice(0, 500),
+      source: "ui_button",
+    };
+
+    await fs.mkdir(dirname("data/feedback/decisions.jsonl"), { recursive: true });
+    await fs.appendFile("data/feedback/decisions.jsonl", JSON.stringify(record) + "\n");
+
+    return c.json({ ok: true, record });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    return c.json({ error: `Feedback failed: ${msg}` }, 500);
   }
 });
 

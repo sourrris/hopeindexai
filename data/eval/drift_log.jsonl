@@ -1,0 +1,1 @@
+{"generatedAt":"2026-06-14T09:13:29.785Z","eventCount":2000,"positives":0,"negatives":2000,"auc":null,"f1":0,"modelVersion":"escalation-logreg-supervised-v1","modelPath":"data/models/escalation-model-supervised-latest.json"}

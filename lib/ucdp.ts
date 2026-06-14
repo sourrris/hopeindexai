@@ -73,7 +73,7 @@ export interface SupervisedLabel {
   date: string;
   countryCode: string;
   label: 0 | 1;
-  labelSource: "ucdp_ged" | "ucdp_candidate" | "ucdp_merged" | "ucdp_negative";
+  labelSource: "ucdp_ged" | "ucdp_candidate" | "ucdp_merged" | "ucdp_negative" | "phase1_human";
   confidence: number;
   matches: UcdpMatch[];
   deathsBest: number;

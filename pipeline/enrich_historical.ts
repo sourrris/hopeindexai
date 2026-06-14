@@ -1,5 +1,7 @@
 import { promises as fs } from "fs";
 import { inflateRawSync } from "zlib";
+import { fetchTitlesInBatches } from "../lib/article_fetch.ts";
+import { isNoisyActor, computeExtractionConfidence } from "../lib/actor_quality.ts";
 
 // Fetch historical GDELT v2 15-minute export files for a date range.
 // This is autonomous: GDELT v2 files are public and require no API key.
@@ -30,6 +32,8 @@ interface GdeltEvent {
   markerRadius: number;
   severity: "low" | "medium" | "high" | "critical";
   continent: string;
+  title?: string;
+  extractionConfidence?: number;
 }
 
 const COL = {
@@ -265,26 +269,69 @@ function deduplicateEvents(events: GdeltEvent[]): GdeltEvent[] {
   return deduplicated;
 }
 
-function parseArgs(): { startDate: string; days: number; output: string; filesPerDay: number } {
+function parseArgs(): { startDate: string; days: number; output: string; filesPerDay: number; fetchTitles: boolean } {
   const args = process.argv.slice(2);
   let startDate = "";
   let days = 30;
   let output = "data/training/historical_events.json";
   let filesPerDay = 4;
+  let fetchTitles = false;
 
   for (const arg of args) {
     if (arg.startsWith("--start=")) startDate = arg.slice("--start=".length);
     if (arg.startsWith("--days=")) days = parseInt(arg.slice("--days=".length), 10);
     if (arg.startsWith("--output=")) output = arg.slice("--output=".length);
     if (arg.startsWith("--files-per-day=")) filesPerDay = parseInt(arg.slice("--files-per-day=".length), 10);
+    if (arg === "--fetch-titles") fetchTitles = true;
   }
 
   if (!startDate || !/^\d{4}-\d{2}-\d{2}$/.test(startDate)) {
-    console.error("Usage: bun run enrich:historical -- --start=YYYY-MM-DD --days=N [--output=path] [--files-per-day=N]");
+    console.error("Usage: bun run enrich:historical -- --start=YYYY-MM-DD --days=N [--output=path] [--files-per-day=N] [--fetch-titles]");
     process.exit(1);
   }
 
-  return { startDate, days, output, filesPerDay };
+  return { startDate, days, output, filesPerDay, fetchTitles };
+}
+
+function filterNoisyEvents(events: GdeltEvent[]): GdeltEvent[] {
+  const before = events.length;
+  const filtered = events.filter((e) => !isNoisyActor(e.actor1));
+  if (before !== filtered.length) {
+    console.log(`Pipeline -> Noise filter removed ${before - filtered.length} events with noisy actor1 strings.`);
+  }
+  return filtered;
+}
+
+async function applyTitleAndQuality(events: GdeltEvent[], fetchTitles: boolean): Promise<GdeltEvent[]> {
+  if (!fetchTitles) {
+    return events.map((e) => ({
+      ...e,
+      extractionConfidence: computeExtractionConfidence({ actor1: e.actor1, actor2: e.actor2, sourceUrl: e.sourceUrl }),
+    }));
+  }
+
+  const urls = events.map((e) => e.sourceUrl).filter((url) => url.startsWith("http"));
+  console.log(`Pipeline -> Fetching titles for ${urls.length} source URLs (concurrency=20)...`);
+  const results = await fetchTitlesInBatches(urls, 20, 8_000, (done, total) => {
+    if (done % 100 === 0 || done === total) console.log(`  ${done}/${total} titles fetched`);
+  });
+
+  return events.map((e) => {
+    const fetched = results.get(e.sourceUrl);
+    const title = fetched?.title;
+    const sourceReachable = fetched ? fetched.ok : undefined;
+    return {
+      ...e,
+      title,
+      extractionConfidence: computeExtractionConfidence({
+        actor1: e.actor1,
+        actor2: e.actor2,
+        sourceUrl: e.sourceUrl,
+        title,
+        sourceReachable,
+      }),
+    };
+  });
 }
 
 function gdeltUrlsForRange(startDate: string, days: number, filesPerDay: number): string[] {
@@ -317,7 +364,7 @@ function gdeltUrlsForRange(startDate: string, days: number, filesPerDay: number)
 }
 
 async function main() {
-  const { startDate, days, output, filesPerDay } = parseArgs();
+  const { startDate, days, output, filesPerDay, fetchTitles } = parseArgs();
   const urls = gdeltUrlsForRange(startDate, days, filesPerDay);
 
   console.log(`Fetching ${urls.length} GDELT v2 files from ${startDate} for ${days} days...`);
@@ -337,10 +384,14 @@ async function main() {
   const deduplicated = deduplicateEvents(allEvents);
   console.log(`Deduplicated to ${deduplicated.length} events`);
 
+  const filtered = filterNoisyEvents(deduplicated);
+  const qualityEvents = await applyTitleAndQuality(filtered, fetchTitles);
+  console.log(`Final ${qualityEvents.length} events with quality scores`);
+
   await fs.mkdir(output.split("/").slice(0, -1).join("/") || ".", { recursive: true });
   await fs.writeFile(
     output,
-    JSON.stringify({ updated: new Date().toISOString(), count: deduplicated.length, events: deduplicated }, null, 2)
+    JSON.stringify({ updated: new Date().toISOString(), count: qualityEvents.length, events: qualityEvents }, null, 2)
   );
 
   console.log(`Wrote ${output}`);
