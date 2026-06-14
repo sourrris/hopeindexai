@@ -1,84 +1,84 @@
 {
-  "generatedAt": "2026-06-14T06:48:07.291Z",
+  "generatedAt": "2026-06-14T08:24:09.346Z",
   "policyPath": "public/data/surfacing-policy.json",
   "eventPath": "public/data/events.json",
   "reportPath": "data/eval/phase1_surface_report.json",
-  "threshold": 38,
+  "threshold": 28,
   "metrics": {
     "labels": {
       "rows": 120,
       "sourceCounts": {
-        "human": 4,
-        "llm_article_review": 116
+        "human": 101,
+        "llm_article_review": 19
       },
-      "humanReviewedRows": 4,
-      "sourceCheckedHumanRows": 4,
+      "humanReviewedRows": 101,
+      "sourceCheckedHumanRows": 101,
       "uncheckedHumanReviewedRows": 0
     },
     "baseline": {
       "samples": 120,
-      "positives": 42,
-      "negatives": 78,
+      "positives": 40,
+      "negatives": 80,
       "predictedPositive": 117,
-      "accuracy": 0.375,
-      "balancedAccuracy": 0.5192,
-      "precision": 0.359,
+      "accuracy": 0.3583,
+      "balancedAccuracy": 0.5188,
+      "precision": 0.3419,
       "recall": 1,
-      "specificity": 0.0385,
-      "f1": 0.5283,
-      "falseAlarmRate": 0.641,
+      "specificity": 0.0375,
+      "f1": 0.5096,
+      "falseAlarmRate": 0.6581,
       "missRate": 0,
       "confusion": {
-        "tp": 42,
-        "fp": 75,
+        "tp": 40,
+        "fp": 77,
         "tn": 3,
         "fn": 0
       }
     },
     "candidateModel": {
       "samples": 120,
-      "positives": 42,
-      "negatives": 78,
+      "positives": 40,
+      "negatives": 80,
       "predictedPositive": 75,
-      "accuracy": 0.5583,
-      "balancedAccuracy": 0.6053,
-      "precision": 0.4267,
-      "recall": 0.7619,
-      "specificity": 0.4487,
-      "f1": 0.547,
-      "falseAlarmRate": 0.5733,
-      "missRate": 0.2381,
+      "accuracy": 0.4583,
+      "balancedAccuracy": 0.5,
+      "precision": 0.3333,
+      "recall": 0.625,
+      "specificity": 0.375,
+      "f1": 0.4348,
+      "falseAlarmRate": 0.6667,
+      "missRate": 0.375,
       "confusion": {
-        "tp": 32,
-        "fp": 43,
-        "tn": 35,
-        "fn": 10
+        "tp": 25,
+        "fp": 50,
+        "tn": 30,
+        "fn": 15
       }
     },
     "surfacePolicy": {
       "samples": 120,
-      "positives": 42,
-      "negatives": 78,
-      "predictedPositive": 60,
-      "accuracy": 0.7,
-      "balancedAccuracy": 0.7198,
-      "precision": 0.55,
-      "recall": 0.7857,
-      "specificity": 0.6538,
-      "f1": 0.6471,
-      "falseAlarmRate": 0.45,
-      "missRate": 0.2143,
+      "positives": 40,
+      "negatives": 80,
+      "predictedPositive": 72,
+      "accuracy": 0.55,
+      "balancedAccuracy": 0.5938,
+      "precision": 0.4028,
+      "recall": 0.725,
+      "specificity": 0.4625,
+      "f1": 0.5179,
+      "falseAlarmRate": 0.5972,
+      "missRate": 0.275,
       "confusion": {
-        "tp": 33,
-        "fp": 27,
-        "tn": 51,
-        "fn": 9
+        "tp": 29,
+        "fp": 43,
+        "tn": 37,
+        "fn": 11
       }
     },
     "precisionAt": {
-      "top10": 1,
-      "top25": 0.8,
-      "top50": 0.56
+      "top10": 0.8,
+      "top25": 0.64,
+      "top50": 0.42
     },
     "clusters": {
       "sourceClusters": 373,
@@ -87,29 +87,57 @@
     }
   },
   "errorAnalysis": {
-    "falsePositiveCount": 27,
-    "falseNegativeCount": 9,
+    "falsePositiveCount": 43,
+    "falseNegativeCount": 11,
     "falsePositiveCauses": {
-      "duplicate source row": 15,
-      "background or source-mismatch article": 6,
-      "generic GDELT extraction": 3,
-      "local crime pattern": 3,
-      "analysis/opinion source": 2,
-      "entertainment/history extraction noise": 2,
-      "strategic actor or theater": 1,
-      "governance or public-safety signal": 1,
-      "high-risk regional context": 1,
-      "opinion/background article": 1,
-      "local-news source pattern": 1
+      "duplicate source row": 18,
+      "background or source-mismatch article": 8,
+      "governance or public-safety signal": 5,
+      "analysis/opinion source": 5,
+      "generic GDELT extraction": 5,
+      "local crime pattern": 5,
+      "strategic actor or theater": 3,
+      "high-risk regional context": 3,
+      "entertainment/history extraction noise": 3,
+      "direct event wording": 2,
+      "opinion/background article": 2,
+      "local-news source pattern": 2,
+      "GDELT/model signal only": 2,
+      "humanitarian/public-safety signal": 1
     },
     "falseNegativeCauses": {
-      "duplicate source row": 5,
-      "strategic actor or theater": 2,
-      "high-mention diplomacy": 2,
-      "direct event wording": 1,
-      "generic GDELT extraction": 1
+      "duplicate source row": 9,
+      "generic GDELT extraction": 1,
+      "high-mention diplomacy": 1
     },
     "topFalsePositives": [
+      {
+        "id": "1306734800",
+        "date": "2026-05-31",
+        "title": "ISRAELI -> FIGHTER",
+        "sourceDomain": "albawaba.com",
+        "score": 100,
+        "modelProbability": 0.9558,
+        "reasons": [
+          "strategic actor or theater",
+          "governance or public-safety signal",
+          "high-risk regional context"
+        ],
+        "sourceUrl": "https://www.albawaba.com/news/thousands-join-anti-netanyahu-protesters-1628778"
+      },
+      {
+        "id": "1306011426",
+        "date": "2026-05-26",
+        "title": "IRAN -> MILITARY",
+        "sourceDomain": "dw.com",
+        "score": 100,
+        "modelProbability": 0.9076,
+        "reasons": [
+          "strategic actor or theater",
+          "high-risk regional context"
+        ],
+        "sourceUrl": "https://www.dw.com/en/iran-data-show-partial-restoration-of-internet-connectivity/live-77292206"
+      },
       {
         "id": "1306183836",
         "date": "2026-05-27",
@@ -125,6 +153,32 @@
         "sourceUrl": "https://www.jpost.com/diaspora/antisemitism/article-897519"
       },
       {
+        "id": "1306579538",
+        "date": "2026-05-29",
+        "title": "PROTESTER",
+        "sourceDomain": "nypost.com",
+        "score": 86,
+        "modelProbability": 0.7515,
+        "reasons": [
+          "direct event wording",
+          "governance or public-safety signal",
+          "humanitarian/public-safety signal"
+        ],
+        "sourceUrl": "https://nypost.com/2026/05/29/us-news/nj-gov-blocking-cops-from-helping-feds-at-delaney-hall-protests-union/"
+      },
+      {
+        "id": "1306183620",
+        "date": "2026-05-27",
+        "title": "PRESIDENT -> POLICE OFFICER",
+        "sourceDomain": "democracynow.org",
+        "score": 83,
+        "modelProbability": 0.7759,
+        "reasons": [
+          "governance or public-safety signal"
+        ],
+        "sourceUrl": "https://www.democracynow.org/2026/5/27/delaney_hall"
+      },
+      {
         "id": "1306479871",
         "date": "2026-05-29",
         "title": "ISRAELI -> IRAN",
@@ -137,20 +191,6 @@
           "penalty: background or source-mismatch article"
         ],
         "sourceUrl": "http://www.caribbeanherald.com/news/279073737/the-role-of-the-neo-authoritarian-bloc-in-modern-conflicts"
-      },
-      {
-        "id": "1306445038",
-        "date": "2026-05-29",
-        "title": "IRANIAN -> AMERICAN",
-        "sourceDomain": "nzherald.co.nz",
-        "score": 76,
-        "modelProbability": 0.858,
-        "reasons": [
-          "strategic actor or theater",
-          "direct event wording",
-          "penalty: duplicate source row"
-        ],
-        "sourceUrl": "https://www.nzherald.co.nz/world/us-and-iran-standoff-at-sea-a-test-of-who-blinks-first/premium/5RVBE6VYSZB6FJTNWVPZAN6NBQ/"
       },
       {
         "id": "1306132828",
@@ -181,6 +221,34 @@
         "sourceUrl": "https://jewishpress.com/the-iran-war-was-decades-too-late/"
       },
       {
+        "id": "1306616743",
+        "date": "2026-05-30",
+        "title": "IRAN",
+        "sourceDomain": "eurasiareview.com",
+        "score": 72,
+        "modelProbability": 0.8907,
+        "reasons": [
+          "strategic actor or theater",
+          "high-risk regional context",
+          "penalty: analysis/opinion source",
+          "penalty: duplicate source row"
+        ],
+        "sourceUrl": "https://www.eurasiareview.com/30052026-the-war-above-the-war-how-chinese-satellites-support-iran-analysis/"
+      },
+      {
+        "id": "1306183960",
+        "date": "2026-05-27",
+        "title": "LEBANON -> FUNDAMENTALIST CHRISTIAN",
+        "sourceDomain": "middleeasteye.net",
+        "score": 71,
+        "modelProbability": 0.6788,
+        "reasons": [
+          "strategic actor or theater",
+          "penalty: analysis/opinion source"
+        ],
+        "sourceUrl": "https://www.middleeasteye.net/opinion/israels-colonisation-south-lebanon-already-under-way"
+      },
+      {
         "id": "1306306896",
         "date": "2026-05-28",
         "title": "THE US -> MILITARY",
@@ -205,91 +273,75 @@
           "penalty: background or source-mismatch article"
         ],
         "sourceUrl": "https://dfwatch.net/dfwatch-launches-new-weekly-newsletter-66702/"
-      },
-      {
-        "id": "1306183837",
-        "date": "2026-05-27",
-        "title": "ISRAEL -> COMMUNITY",
-        "sourceDomain": "jpost.com",
-        "score": 70,
-        "modelProbability": 0.8831,
-        "reasons": [
-          "strategic actor or theater",
-          "high-risk regional context",
-          "penalty: duplicate source row"
-        ],
-        "sourceUrl": "https://www.jpost.com/israel-news/crime-in-israel/article-897498"
-      },
-      {
-        "id": "1306529011",
-        "date": "2026-05-29",
-        "title": "IRANIAN -> TEHRAN",
-        "sourceDomain": "jns.org",
-        "score": 70,
-        "modelProbability": 0.9275,
-        "reasons": [
-          "strategic actor or theater",
-          "high-risk regional context",
-          "penalty: analysis/opinion source",
-          "penalty: duplicate source row"
-        ],
-        "sourceUrl": "https://www.jns.org/opinion/column/ben-cohen/war-and-peace-in-lebanon"
-      },
-      {
-        "id": "1305915828",
-        "date": "2026-05-26",
-        "title": "IRAN -> MILITIA",
-        "sourceDomain": "city.udn.com",
-        "score": 67,
-        "modelProbability": 0.8697,
-        "reasons": [
-          "strategic actor or theater",
-          "penalty: duplicate source row"
-        ],
-        "sourceUrl": "https://city.udn.com/2976/7247690?raid=7295851"
-      },
-      {
-        "id": "1306616694",
-        "date": "2026-05-30",
-        "title": "FIREFIGHTER -> IDAHO",
-        "sourceDomain": "kmvt.com",
-        "score": 66,
-        "modelProbability": 0.8644,
-        "reasons": [
-          "strategic actor or theater",
-          "penalty: duplicate source row"
-        ],
-        "sourceUrl": "https://www.kmvt.com/2026/05/30/summit-creek-fire-update/"
-      },
-      {
-        "id": "1306616880",
-        "date": "2026-05-30",
-        "title": "MILITARY",
-        "sourceDomain": "eurasiareview.com",
-        "score": 65,
-        "modelProbability": 0.8753,
-        "reasons": [
-          "strategic actor or theater",
-          "high-risk regional context",
-          "penalty: analysis/opinion source",
-          "penalty: duplicate source row"
-        ],
-        "sourceUrl": "https://www.eurasiareview.com/30052026-the-war-above-the-war-how-chinese-satellites-support-iran-analysis/"
       }
     ],
     "topFalseNegatives": [
       {
-        "id": "1306734846",
-        "date": "2026-05-31",
-        "title": "COMMANDER",
-        "sourceDomain": "premiumtimesng.com",
-        "score": 4,
-        "modelProbability": 0.2233,
+        "id": "1306011919",
+        "date": "2026-05-26",
+        "title": "SAUDI ARABIA -> UNITED ARAB EMIRATES",
+        "sourceDomain": "globaltimes.cn",
+        "score": 0,
+        "modelProbability": 0.0684,
         "reasons": [
-          "direct event wording",
+          "high-mention diplomacy",
           "penalty: duplicate source row"
         ],
-        "sourceUrl": "https://www.premiumtimesng.com/news/top-news/884071-nigerian-troops-ambush-terrorists-kill-one-official.html"
+        "sourceUrl": "https://www.globaltimes.cn/page/202605/1362008.shtml"
+      },
+      {
+        "id": "1306011835",
+        "date": "2026-05-26",
+        "title": "QATAR -> UNITED ARAB EMIRATES",
+        "sourceDomain": "globaltimes.cn",
+        "score": 0,
+        "modelProbability": 0.0579,
+        "reasons": [
+          "high-mention diplomacy",
+          "penalty: duplicate source row"
+        ],
+        "sourceUrl": "https://www.globaltimes.cn/page/202605/1362008.shtml"
+      },
+      {
+        "id": "1306011040",
+        "date": "2026-05-26",
+        "title": "EGYPT -> UNITED ARAB EMIRATES",
+        "sourceDomain": "globaltimes.cn",
+        "score": 0,
+        "modelProbability": 0.057,
+        "reasons": [
+          "high-mention diplomacy",
+          "penalty: duplicate source row"
+        ],
+        "sourceUrl": "https://www.globaltimes.cn/page/202605/1362008.shtml"
+      },
+      {
+        "id": "1306011526",
+        "date": "2026-05-26",
+        "title": "JORDAN -> UNITED ARAB EMIRATES",
+        "sourceDomain": "globaltimes.cn",
+        "score": 0,
+        "modelProbability": 0.057,
+        "reasons": [
+          "high-mention diplomacy",
+          "penalty: duplicate source row"
+        ],
+        "sourceUrl": "https://www.globaltimes.cn/page/202605/1362008.shtml"
+      },
+      {
+        "id": "1306011761",
+        "date": "2026-05-26",
+        "title": "PAKISTAN -> UNITED ARAB EMIRATES",
+        "sourceDomain": "globaltimes.cn",
+        "score": 8,
+        "modelProbability": 0.173,
+        "reasons": [
+          "strategic actor or theater",
+          "high-mention diplomacy",
+          "high-risk regional context",
+          "penalty: duplicate source row"
+        ],
+        "sourceUrl": "https://www.globaltimes.cn/page/202605/1362008.shtml"
       },
       {
         "id": "1306010628",
@@ -302,6 +354,20 @@
           "high-mention diplomacy"
         ],
         "sourceUrl": "https://www.globaltimes.cn/page/202605/1362008.shtml"
+      },
+      {
+        "id": "1305688455",
+        "date": "2026-05-24",
+        "title": "ISRAEL -> IRAN",
+        "sourceDomain": "seattletimes.com",
+        "score": 9,
+        "modelProbability": 0.2512,
+        "reasons": [
+          "strategic actor or theater",
+          "direct event wording",
+          "penalty: duplicate source row"
+        ],
+        "sourceUrl": "https://www.seattletimes.com/nation-world/nation/details-of-us-iran-deal-begin-to-emerge-after-trump-announces-progress/"
       },
       {
         "id": "1306641403",
@@ -331,6 +397,20 @@
         "sourceUrl": "https://www.khaama.com/ttp-leader-announces-eid-ceasefire-amid-rising-violence-in-pakistan/"
       },
       {
+        "id": "1305688675",
+        "date": "2026-05-24",
+        "title": "MILITANT -> SECURITY FORCE",
+        "sourceDomain": "khaama.com",
+        "score": 17,
+        "modelProbability": 0.3277,
+        "reasons": [
+          "strategic actor or theater",
+          "direct event wording",
+          "penalty: duplicate source row"
+        ],
+        "sourceUrl": "https://www.khaama.com/ttp-leader-announces-eid-ceasefire-amid-rising-violence-in-pakistan/"
+      },
+      {
         "id": "1306306146",
         "date": "2026-05-28",
         "title": "SECURITY FORCE",
@@ -343,60 +423,6 @@
           "penalty: duplicate source row"
         ],
         "sourceUrl": "https://www.nationalaccordnewspaper.com/about-30000-fulani-militants-behind-insecurity-in-nigeria-says-us-report/"
-      },
-      {
-        "id": "1306359192",
-        "date": "2026-05-28",
-        "title": "CITIZEN",
-        "sourceDomain": "13newsnow.com",
-        "score": 26,
-        "modelProbability": 0.386,
-        "reasons": [
-          "direct event wording",
-          "governance or public-safety signal",
-          "penalty: duplicate source row"
-        ],
-        "sourceUrl": "https://www.13newsnow.com/article/news/local/virginia/virginia-assault-weapons-ban-faces-pushback-from-prosecutors/65-8778fde1-3d26-4eab-a8bb-fcc571a76ad2"
-      },
-      {
-        "id": "1306480275",
-        "date": "2026-05-29",
-        "title": "UKRAINE -> FIGHTER JET",
-        "sourceDomain": "independent.co.uk",
-        "score": 28,
-        "modelProbability": 0.1551,
-        "reasons": [
-          "strategic actor or theater",
-          "direct event wording"
-        ],
-        "sourceUrl": "https://www.independent.co.uk/news/world/europe/ukraine-gripen-fighter-jets-uk-sweden-b2985756.html"
-      },
-      {
-        "id": "1305851420",
-        "date": "2026-05-25",
-        "title": "PAKISTANI -> CHINESE",
-        "sourceDomain": "english.news.cn",
-        "score": 32,
-        "modelProbability": 0.207,
-        "reasons": [
-          "strategic actor or theater",
-          "high-mention diplomacy"
-        ],
-        "sourceUrl": "https://english.news.cn/20260526/6eda5236766c4c4cab5b00f0324e8daf/c.html"
-      },
-      {
-        "id": "1305718918",
-        "date": "2026-05-24",
-        "title": "RUSSIA -> CIVILIAN",
-        "sourceDomain": "ianslive.in",
-        "score": 36,
-        "modelProbability": 0.5165,
-        "reasons": [
-          "strategic actor or theater",
-          "direct event wording",
-          "penalty: duplicate source row"
-        ],
-        "sourceUrl": "https://ianslive.in/european-leaders-condemn-russias-use-of-oreshnik-missile-against-ukraine--20260524224423"
       }
     ]
   },

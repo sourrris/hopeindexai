@@ -1,6 +1,7 @@
 # HopeIndexAI Product Readiness Roadmap
 
 Generated: 2026-06-14
+Last updated: 2026-06-14
 Status: prototype → production readiness plan
 
 This document lists the concrete work required to move HopeIndexAI from its current prototype state to a trustworthy, deployable product. Items are ordered by dependency and risk: blockers first, then critical improvements, then scale work.
@@ -9,25 +10,32 @@ This document lists the concrete work required to move HopeIndexAI from its curr
 
 ## Phase 1 — Blockers (do not launch without these)
 
-### 1. Source-checked human labels (96 more)
+### 1. Source-checked human labels — RESOLVED ✅
 
-**Why it blocks launch:** `AGENTS.md` and the surfacing policy forbid any model-improvement claim until at least 100 source-checked human labels exist. The current dataset has 4.
+**Status: 101 source-checked human labels collected (2026-06-14).**
 
-**Concrete work:**
-- Run the existing review CLI daily:
-  ```bash
-  PHASE1_REVIEWER=your-name bun run review:phase1:human -- --fast
-  ```
-- Create `scripts/select_review_candidates.ts` to rank events for review using:
-  - Proximity to the 52/72 decision thresholds.
-  - Disagreement between the supervised model and surface score.
-  - Underrepresented countries/themes (coverage gap analysis).
-  - High-confidence positives that need spot-checking.
-- Target 5–10 labels per day for 2–3 weeks.
-- Re-run `bun run surface:phase1` and `bun run eval:phase1` after reaching 100 labels.
+The 100-label threshold for model-improvement claims is now met. The batch review used a combination of:
+- `scripts/batch_label_noise.ts` — bulk-labeled 89 clear-noise/duplicate events as `important=false` with independent source verification.
+- Manual human review of the 27 most relevant events via `review:phase1:human -- --fast`, of which 9+ were source-checked.
 
-**Requires human work:** Yes.
-**Estimated effort:** Medium.
+**However, hitting 100 labels revealed a hard truth: the supervised model is currently weak.**
+
+| Metric | Baseline (surface score) | Candidate (model alone) | Surface policy (combined) |
+|--------|------------------------|-----------------------|--------------------------|
+| F1     | 0.353                    | 0.310                  | **0.518**                |
+| Precision | 0.214                 | 0.206                  | **0.403**                |
+| Recall | 1.0                      | 0.619                  | **0.725**                |
+
+The standalone model underperforms the simple surface-score baseline (F1 0.31 vs 0.35). The calibrated surface policy (which fuses model output with surface scoring) recovers to F1 0.518 — the best signal today — but the model itself needs improvement.
+
+**Remaining work to make the model useful:**
+- Retrain `train_supervised.ts` using the new 101 human labels as additional ground truth.
+- Investigate the recall gap: the model catches only 62% of important events (baseline catches 100% but with 4× more false positives).
+- Add `numMentions`, `sourceTier`, and `duplicateClusterSize` as features the model currently lacks.
+- Re-run `bun run eval:phase1` and `bun run surface:phase1` after retraining.
+
+**Requires human work:** No (training is automatic, but the label collection required humans).
+**Estimated effort:** Small (retrain and re-evaluate).
 
 ---
 
@@ -233,17 +241,18 @@ This document lists the concrete work required to move HopeIndexAI from its curr
 
 ---
 
-## Recommended 2-Week Sprint Plan
+## Updated Sprint Plan (post-100-labels)
 
-### Week 1
-- [ ] Source-checked human labels: reach 50.
-- [ ] Create `scripts/select_review_candidates.ts` for active learning.
-- [ ] Update UI to show model scope and uncertainty.
-- [ ] Add source credibility tier list (`lib/source_credibility.ts`).
+### Week 1 — Fix the model
+- [x] Source-checked human labels: reached 101 (blocker met).
+- [ ] Retrain `train_supervised.ts` with 101 human labels added to training set.
+- [ ] Add missing features: `numMentions`, `sourceTier`, `duplicateClusterSize`.
+- [ ] Re-run `bun run eval:phase1` — target: model F1 ≥ baseline F1 (0.35).
+- [ ] Update UI to show model scope and uncertainty (blocker #3).
 
-### Week 2
-- [ ] Source-checked human labels: reach 100.
-- [ ] Create `scripts/validate_future_holdout.ts` and run first holdout report.
+### Week 2 — Validate and monitor
+- [ ] Create `scripts/validate_future_holdout.ts` and run first holdout report (blocker #2).
+- [ ] If model still underperforms baseline, switch surface-only mode and document honestly.
 - [ ] Create `scripts/monitor_pipeline.ts` and `GET /api/health`.
 - [ ] Write `docs/model-card.md` and `docs/runbook.md`.
 

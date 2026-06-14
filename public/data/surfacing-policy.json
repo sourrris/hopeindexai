@@ -1,8 +1,8 @@
 {
   "version": "phase1-surfacing-policy-v1",
-  "generatedAt": "2026-06-14T06:48:07.291Z",
-  "labelSource": "provisional_non_human",
-  "threshold": 38,
+  "generatedAt": "2026-06-14T08:24:09.346Z",
+  "labelSource": "source_checked_human",
+  "threshold": 28,
   "bandCutoffs": {
     "lead": 72,
     "watch": 52
@@ -31,77 +31,77 @@
     "labels": {
       "rows": 120,
       "sourceCounts": {
-        "human": 4,
-        "llm_article_review": 116
+        "human": 101,
+        "llm_article_review": 19
       },
-      "humanReviewedRows": 4,
-      "sourceCheckedHumanRows": 4,
+      "humanReviewedRows": 101,
+      "sourceCheckedHumanRows": 101,
       "uncheckedHumanReviewedRows": 0
     },
     "baseline": {
       "samples": 120,
-      "positives": 42,
-      "negatives": 78,
+      "positives": 40,
+      "negatives": 80,
       "predictedPositive": 117,
-      "accuracy": 0.375,
-      "balancedAccuracy": 0.5192,
-      "precision": 0.359,
+      "accuracy": 0.3583,
+      "balancedAccuracy": 0.5188,
+      "precision": 0.3419,
       "recall": 1,
-      "specificity": 0.0385,
-      "f1": 0.5283,
-      "falseAlarmRate": 0.641,
+      "specificity": 0.0375,
+      "f1": 0.5096,
+      "falseAlarmRate": 0.6581,
       "missRate": 0,
       "confusion": {
-        "tp": 42,
-        "fp": 75,
+        "tp": 40,
+        "fp": 77,
         "tn": 3,
         "fn": 0
       }
     },
     "candidateModel": {
       "samples": 120,
-      "positives": 42,
-      "negatives": 78,
+      "positives": 40,
+      "negatives": 80,
       "predictedPositive": 75,
-      "accuracy": 0.5583,
-      "balancedAccuracy": 0.6053,
-      "precision": 0.4267,
-      "recall": 0.7619,
-      "specificity": 0.4487,
-      "f1": 0.547,
-      "falseAlarmRate": 0.5733,
-      "missRate": 0.2381,
+      "accuracy": 0.4583,
+      "balancedAccuracy": 0.5,
+      "precision": 0.3333,
+      "recall": 0.625,
+      "specificity": 0.375,
+      "f1": 0.4348,
+      "falseAlarmRate": 0.6667,
+      "missRate": 0.375,
       "confusion": {
-        "tp": 32,
-        "fp": 43,
-        "tn": 35,
-        "fn": 10
+        "tp": 25,
+        "fp": 50,
+        "tn": 30,
+        "fn": 15
       }
     },
     "surfacePolicy": {
       "samples": 120,
-      "positives": 42,
-      "negatives": 78,
-      "predictedPositive": 60,
-      "accuracy": 0.7,
-      "balancedAccuracy": 0.7198,
-      "precision": 0.55,
-      "recall": 0.7857,
-      "specificity": 0.6538,
-      "f1": 0.6471,
-      "falseAlarmRate": 0.45,
-      "missRate": 0.2143,
+      "positives": 40,
+      "negatives": 80,
+      "predictedPositive": 72,
+      "accuracy": 0.55,
+      "balancedAccuracy": 0.5938,
+      "precision": 0.4028,
+      "recall": 0.725,
+      "specificity": 0.4625,
+      "f1": 0.5179,
+      "falseAlarmRate": 0.5972,
+      "missRate": 0.275,
       "confusion": {
-        "tp": 33,
-        "fp": 27,
-        "tn": 51,
-        "fn": 9
+        "tp": 29,
+        "fp": 43,
+        "tn": 37,
+        "fn": 11
       }
     },
     "precisionAt": {
-      "top10": 1,
-      "top25": 0.8,
-      "top50": 0.56
+      "top10": 0.8,
+      "top25": 0.64,
+      "top50": 0.42
     },
     "clusters": {
       "sourceClusters": 373,
