@@ -23,3 +23,10 @@ data/external/**/*_compact.jsonl
 data/training/risk_windows_country_month.jsonl
 data/training/historical_conflict_records.jsonl
 data/experiments/
+
+# Agent system directories
+.agent-system/runs/
+.agent-system/tmp/
+.claude/settings.local.json
+.gemini/settings.local.json
+opencode.local.json

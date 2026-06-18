@@ -119,7 +119,7 @@ async function validate(): Promise<ValidationResult[]> {
 
   // 4. Human label threshold for improvement claims.
   const sourceCheckedHuman = labels.filter(
-    (l) => l.labelSource === "human" && l.reviewContext?.sourceChecked === true
+    (l) => l.labelSource === "human" && l.reviewContext?.sourceChecked === true && l.reviewContext?.sourceSupportsClaim !== false
   ).length;
   results.push({
     name: "human_label_minimum",

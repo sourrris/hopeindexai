@@ -14,6 +14,7 @@
     "train": "bun pipeline/train.ts",
     "train:supervised": "bun pipeline/train_supervised.ts",
     "train:full": "bun pipeline/train_full.ts",
+    "labels:queue": "bun scripts/build_labeling_queue.ts",
     "labels:build": "bun scripts/build_supervised_labels.ts",
     "ci": "bun run test:all && bun run pipeline:validate",
     "deploy:check": "bun run ci && bun scripts/pre_deploy_check.ts",

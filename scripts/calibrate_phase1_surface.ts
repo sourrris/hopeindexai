@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from "fs/promises";
 import { dirname } from "path";
+import { scoreEscalationModel, type EscalationModelArtifact } from "../lib/escalation_model.ts";
 import { sourceTierFromUrl } from "../lib/source_credibility.ts";
 
 type Category = "doom" | "bloom";
@@ -78,12 +79,7 @@ interface Phase1Label {
   };
 }
 
-interface ModelArtifact {
-  version?: string;
-  featureNames?: string[];
-  preprocessing?: { means?: number[]; stds?: number[] };
-  model?: { bias?: number; weights?: number[]; threshold?: number };
-}
+type ModelArtifact = EscalationModelArtifact;
 
 interface ScoredEvent {
   event: GdeltEvent;
@@ -116,13 +112,14 @@ interface CoverageStats {
 
 const EVENTS_PATH = "public/data/events.json";
 const LABEL_PATH = "data/eval/phase1_labels.jsonl";
+const VERSIONED_CHAMPION_MODEL_PATH = "public/data/models/escalation-model-champion.json";
 const CHAMPION_MODEL_PATH = "public/data/escalation-model.json";
 const SUPERVISED_MODEL_PATH = "public/data/escalation-model-supervised.json";
 const POLICY_PATH = "public/data/surfacing-policy.json";
 const REPORT_PATH = "data/eval/phase1_surface_report.json";
 
 async function loadModel(): Promise<{ model: ModelArtifact | null; path: string }> {
-  for (const path of [SUPERVISED_MODEL_PATH, CHAMPION_MODEL_PATH]) {
+  for (const path of [VERSIONED_CHAMPION_MODEL_PATH, SUPERVISED_MODEL_PATH, CHAMPION_MODEL_PATH]) {
     try {
       const data = JSON.parse(await readFile(path, "utf8"));
       return { model: data, path };
@@ -264,7 +261,8 @@ function writeCompactJson(data: unknown): string {
 function isSourceCheckedHumanLabel(label: Phase1Label): boolean {
   return label.labelSource === "human" &&
     label.humanReviewed === true &&
-    label.reviewContext?.sourceChecked === true;
+    label.reviewContext?.sourceChecked === true &&
+    label.reviewContext?.sourceSupportsClaim !== false;
 }
 
 function dayNumber(date: string): number {
@@ -414,12 +412,7 @@ function modelProbability(event: GdeltEvent, events: GdeltEvent[], model: ModelA
   if (mismatch) throw new Error(`${modelPath} featureNames do not match surfacing feature order.`);
 
   const raw = featuresFor(event, events);
-  const means = model.preprocessing.means ?? [];
-  const stds = model.preprocessing.stds ?? [];
-  const weights = model.model.weights ?? [];
-  const standardized = raw.map((value, index) => (value - (means[index] ?? 0)) / (stds[index] || 1));
-  const logit = (model.model.bias ?? 0) + standardized.reduce((sum, value, index) => sum + value * (weights[index] ?? 0), 0);
-  return sigmoid(logit);
+  return scoreEscalationModel(raw, model) ?? 0.5;
 }
 
 function hasAny(haystack: string, needles: string[]): boolean {

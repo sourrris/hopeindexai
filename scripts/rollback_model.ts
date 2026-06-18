@@ -1,7 +1,9 @@
 import { promises as fs } from "fs";
 
-const CHAMPION_MODEL_PATH = "public/data/escalation-model.json";
-const PREVIOUS_MODEL_PATH = "public/data/escalation-model-previous.json";
+const CHAMPION_MODEL_PATH = "public/data/models/escalation-model-champion.json";
+const PREVIOUS_MODEL_PATH = "public/data/models/escalation-model-previous.json";
+const LEGACY_CHAMPION_MODEL_PATH = "public/data/escalation-model.json";
+const LEGACY_PREVIOUS_MODEL_PATH = "public/data/escalation-model-previous.json";
 const PROMOTION_LOG_PATH = "data/models/promotion_log.jsonl";
 
 interface PromotionRecord {
@@ -31,12 +33,15 @@ async function main() {
   const args = process.argv.slice(2);
   const dryRun = args.includes("--dry-run");
 
-  if (!(await fileExists(PREVIOUS_MODEL_PATH))) {
-    console.error(`Rollback failed: no previous model at ${PREVIOUS_MODEL_PATH}.`);
+  const previousPath = await fileExists(PREVIOUS_MODEL_PATH) ? PREVIOUS_MODEL_PATH : LEGACY_PREVIOUS_MODEL_PATH;
+  const championPath = await fileExists(PREVIOUS_MODEL_PATH) ? CHAMPION_MODEL_PATH : LEGACY_CHAMPION_MODEL_PATH;
+
+  if (!(await fileExists(previousPath))) {
+    console.error(`Rollback failed: no previous model at ${PREVIOUS_MODEL_PATH} or ${LEGACY_PREVIOUS_MODEL_PATH}.`);
     process.exit(1);
   }
 
-  const previous = await fs.readFile(PREVIOUS_MODEL_PATH, "utf8");
+  const previous = await fs.readFile(previousPath, "utf8");
   let previousVersion = "unknown";
   try {
     previousVersion = JSON.parse(previous).version ?? "unknown";
@@ -45,20 +50,20 @@ async function main() {
   }
 
   if (dryRun) {
-    console.log(`DRY RUN: would copy ${PREVIOUS_MODEL_PATH} to ${CHAMPION_MODEL_PATH}`);
+    console.log(`DRY RUN: would copy ${previousPath} to ${championPath}`);
     return;
   }
 
-  await fs.copyFile(PREVIOUS_MODEL_PATH, CHAMPION_MODEL_PATH);
+  await fs.copyFile(previousPath, championPath);
   await appendLog({
     timestamp: new Date().toISOString(),
     action: "rollback",
-    championPath: CHAMPION_MODEL_PATH,
-    previousPath: PREVIOUS_MODEL_PATH,
+    championPath,
+    previousPath,
     reason: `Restored previous champion (${previousVersion}).`,
   });
 
-  console.log(`Rollback complete: restored previous champion (${previousVersion}) to ${CHAMPION_MODEL_PATH}.`);
+  console.log(`Rollback complete: restored previous champion (${previousVersion}) to ${championPath}.`);
 }
 
 main().catch((err) => {

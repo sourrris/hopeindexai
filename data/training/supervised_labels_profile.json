@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-14T09:26:33.655Z",
+  "generatedAt": "2026-06-17T17:45:03.472Z",
   "total": 1500,
   "positives": 23,
   "negatives": 1477,
@@ -10,6 +10,7 @@
     "phase1_human": 101
   },
   "mergedHumanLabels": 101,
+  "excludedUnsupportedHumanReviews": 0,
   "outputPath": "data/training/supervised_labels.jsonl",
   "note": "Labels derived from UCDP GED + Candidate matches, overwritten by source-checked Phase 1 human labels. Positive = matched UCDP event with deaths >= 5 within +/-3 days and 300 km, or human-labeled important. Negative = no/low-death UCDP match or human-labeled not important."
 }

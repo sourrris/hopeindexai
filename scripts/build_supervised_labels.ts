@@ -20,7 +20,7 @@ interface Phase1Label {
   labelSource: "human" | "llm_article_review" | "bootstrap_current_rules";
   humanReviewed: boolean;
   labels: { important: boolean };
-  reviewContext?: { sourceChecked?: boolean };
+  reviewContext?: { sourceChecked?: boolean; sourceSupportsClaim?: boolean };
 }
 
 interface GdeltEventMinimal {
@@ -120,9 +120,18 @@ async function main() {
 
   // Merge source-checked human labels from Phase 1, taking precedence over UCDP-derived labels.
   const humanLabels = await readJsonl<Phase1Label>(humanLabelsPath);
+  const unsupportedHumanReviewIds = new Set(
+    humanLabels
+      .filter((h) => h.labelSource === "human" && h.humanReviewed && h.reviewContext?.sourceChecked && h.reviewContext.sourceSupportsClaim === false)
+      .map((h) => h.eventId)
+  );
+  for (const eventId of unsupportedHumanReviewIds) {
+    labelsById.delete(eventId);
+  }
+
   let mergedHumanCount = 0;
   for (const h of humanLabels) {
-    if (h.labelSource !== "human" || !h.humanReviewed || !h.reviewContext?.sourceChecked) continue;
+    if (h.labelSource !== "human" || !h.humanReviewed || !h.reviewContext?.sourceChecked || h.reviewContext.sourceSupportsClaim === false) continue;
     const event = eventById.get(h.eventId);
     if (!event) continue;
     labelsById.set(h.eventId, {
@@ -160,6 +169,7 @@ async function main() {
     positiveRate: labels.length > 0 ? positives / labels.length : 0,
     bySource,
     mergedHumanLabels: mergedHumanCount,
+    excludedUnsupportedHumanReviews: unsupportedHumanReviewIds.size,
     outputPath: output,
     note: `Labels derived from UCDP GED + Candidate matches, overwritten by source-checked Phase 1 human labels. Positive = matched UCDP event with deaths >= ${SIGNIFICANT_DEATH_THRESHOLD} within +/-3 days and 300 km, or human-labeled important. Negative = no/low-death UCDP match or human-labeled not important.`,
   };

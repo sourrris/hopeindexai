@@ -45,6 +45,8 @@ bun run test:smoke          # API smoke test
 bun run ontology:validate   # ontology mapping validation
 bun run records:build       # build training-grade record drafts
 bun run records:validate    # validate training record guardrails
+bun run labels:queue        # build durable active-learning reviewer queue
+bun run labels:build        # export training/eval labels from source-checked reviews
 bun run import:ucdp         # normalize local UCDP GED CSV into compact evidence
 bun run match:external      # match training records against external evidence
 bun run surface:phase1      # refresh surfacing, clustering, uncertainty, and review queue fields
@@ -55,8 +57,12 @@ bun run test:all            # full lightweight quality gate
 Phase 1 review loop:
 
 ```bash
-bun run review:phase1:human -- --list
-PHASE1_REVIEWER=your-name bun run review:phase1:human -- --limit=30
+bun run labels:queue
+bun run review:phase1:human -- --list --mode=priority
+PHASE1_REVIEWER=your-name bun run review:phase1:human -- --mode=priority --limit=30
+bun run records:build
+bun run records:validate
+bun run labels:build
 bun run eval:phase1
 ```
 
@@ -88,6 +94,20 @@ The queue now uses active learning modes:
 - `Coverage gaps` finds under-reviewed regions, themes, or sources.
 
 In simple ML terms: clustering prevents grading the same incident twice, uncertainty says how shaky the row is, and active learning picks the next homework examples that can improve the answer key fastest.
+
+The durable reviewer queue lives at `data/labeling/reviewer_queue.jsonl` and is built with:
+
+```bash
+bun run labels:queue -- --mode=priority --limit=100
+```
+
+The best source strategy for this project is:
+
+- Use GDELT/public event rows for discovery because they are broad, current, and already linked to source URLs.
+- Use the article/source URL as the required human source check before any label becomes ground truth.
+- Use UCDP GED and UCDP Candidate as open curated conflict evidence when coverage overlaps the row.
+- Use local ACLED aggregate workbooks as trend/context evidence when available, not as row-level label truth.
+- Treat YouTube, X/Twitter, and other social posts as leads only unless the content is public, attributable, independently checkable, and allowed by the platform terms.
 
 The Reviewer Copilot prepares the review packet for that decision. It explains why the event surfaced, what a human should verify, what uncertainty remains, and what to watch next. When LM Studio is running on localhost:1234 (or an Anthropic API key is configured as fallback), it can draft a short review note, but that note is assistant text only. It is not evidence, not a human label, and not source-checked ground truth.
 
