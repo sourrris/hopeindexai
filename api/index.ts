@@ -5,6 +5,7 @@ import { dirname, join } from "path";
 import { promises as fs } from "fs";
 import { fileURLToPath } from "url";
 import { sourceTierFromUrl } from "../lib/source_credibility.ts";
+import { localModelDrivers, modelThreshold, scoreEscalationModel } from "../lib/escalation_model.ts";
 
 export const config = { maxDuration: 30 };
 
@@ -557,12 +558,8 @@ async function liveSurfaceMetadata(
     const model = await loadEscalationModel();
     if (model?.featureNames && model?.preprocessing && model?.model) {
       const raw = modelFeaturesFor(event, events);
-      const means: number[] = model.preprocessing.means ?? [];
-      const stds: number[] = model.preprocessing.stds ?? [];
-      const weights: number[] = model.model.weights ?? [];
-      const standardized = raw.map((value, i) => (value - (means[i] ?? 0)) / (stds[i] || 1));
-      const logit = (model.model.bias ?? 0) + standardized.reduce((sum, value, i) => sum + value * (weights[i] ?? 0), 0);
-      surfaceModelProbability = Number(sigmoid(logit).toFixed(4));
+      const probability = scoreEscalationModel(raw, model);
+      if (typeof probability === "number") surfaceModelProbability = Number(probability.toFixed(4));
     }
   } catch {
     // Keep fallback if model is unreadable.
@@ -1496,29 +1493,14 @@ async function predictEscalation(e: GdeltEvent, events: GdeltEvent[], modelVersi
   if (!model?.featureNames || !model?.preprocessing || !model?.model) return undefined;
 
   const raw = modelFeaturesFor(e, events);
-  const means: number[] = model.preprocessing.means;
-  const stds: number[] = model.preprocessing.stds;
-  const weights: number[] = model.model.weights;
-  const standardized = raw.map((value, i) => (value - (means[i] ?? 0)) / ((stds[i] || 1)));
-  const logit = (model.model.bias ?? 0) + standardized.reduce((sum, value, i) => sum + value * (weights[i] ?? 0), 0);
-  const probability = sigmoid(logit);
-  const threshold = model.model.threshold ?? 0.5;
+  const probability = scoreEscalationModel(raw, model);
+  if (typeof probability !== "number") return undefined;
+  const threshold = modelThreshold(model);
   const label: ModelPrediction["label"] =
     probability >= Math.min(0.78, threshold + 0.2) ? "high" :
       probability >= threshold ? "elevated" : "low";
 
-  const drivers = standardized
-    .map((value, i) => ({
-      feature: model.featureNames[i] ?? `feature_${i}`,
-      contribution: value * (weights[i] ?? 0),
-      direction: value * (weights[i] ?? 0) >= 0 ? "raises" as const : "lowers" as const,
-    }))
-    .sort((a, b) => Math.abs(b.contribution) - Math.abs(a.contribution))
-    .slice(0, 6)
-    .map((driver) => ({
-      ...driver,
-      contribution: Number(driver.contribution.toFixed(4)),
-    }));
+  const drivers = localModelDrivers(raw, model, 6);
 
   return {
     probability,

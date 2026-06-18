@@ -71,6 +71,7 @@ Built now:
 - The default UI is an assignment queue with `Assign`, `Watch`, and `Dismiss` prototype decisions.
 - The Reviewer Copilot prepares source checks, uncertainty notes, and watch items for the selected assignment row.
 - `/api/review-queue` ranks active-learning candidates without changing labels.
+- `bun run labels:queue` writes a durable reviewer labeling queue without changing labels.
 - Event rows include deterministic incident-cluster, why-surfaced, and uncertainty metadata.
 - Ontology validation exists.
 - API smoke testing exists.
@@ -125,7 +126,7 @@ Step-by-step:
 3. Import UCDP GED as historical organized-violence evidence.
 4. Match training records against external evidence by date, country, location, actor, and type.
 5. Review 20 to 30 more labels by hand after opening the source URL or enough source context.
-6. Use the active-learning queue to balance high priority, uncertainty, and coverage gaps.
+6. Use `bun run labels:queue` and the active-learning queue modes to balance high priority, uncertainty, and coverage gaps.
 7. Rebuild records and rerun eval.
 8. Repeat until 100 source-checked human labels exist.
 
@@ -138,16 +139,19 @@ bun run import:ucdp
 bun run match:external
 bun run records:build
 bun run records:validate
+bun run labels:queue
 bun run review:phase1:human -- --list
-PHASE1_REVIEWER=your-name bun run review:phase1:human -- --limit=30
+PHASE1_REVIEWER=your-name bun run review:phase1:human -- --mode=priority --limit=30
 bun run records:build
 bun run records:validate
+bun run labels:build
 bun run eval:phase1
 ```
 
 Done means:
 
 - `data/training/phase2_records.jsonl` exists and validates.
+- `data/labeling/reviewer_queue.jsonl` exists and ranks non-source-checked review candidates.
 - `data/external/matches/phase2_ucdp_matches.jsonl` records UCDP match status where the local UCDP import exists.
 - At least 100 labels have `labelSource: "human"`, `humanReviewed: true`, and `reviewContext.sourceChecked: true`.
 - The reviewer actually checked the event/source context.

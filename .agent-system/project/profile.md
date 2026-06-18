@@ -1,57 +1,87 @@
-# HopeIndexAI — Repository Profile
+# Project Profile
 
-## Project overview
-Human-in-the-loop geopolitical event triage prototype. Serves a static enriched event dataset via a Hono API and a React+Leaflet frontend. Trains supervised and surface-scoring models on GDELT + UCDP data and reports Phase 1 evaluation metrics.
+This profile outlines the repository's technology stack, commands, boundaries, and conventions.
 
-## Technology stack
-- **Language:** TypeScript (ES2022)
-- **Runtime:** Bun (Node 24.x engine declared)
-- **Backend framework:** Hono v4 (`api/index.ts`)
-- **Frontend:** React 18 + Leaflet loaded from CDN; Babel standalone transpiles JSX in browser (no build step)
-- **Package manager:** Bun
+## Repository purpose
 
-## Project structure
-- `api/index.ts` — Hono app + Vercel adapter
-- `server.ts` — local Bun static server
-- `pipeline/` — enrichment and training scripts (`enrich.ts`, `enrich_historical.ts`, `train.ts`, `train_supervised.ts`)
-- `scripts/` — eval, review, import, validation, and monitoring scripts
-- `lib/` — shared helpers (e.g., `ucdp.ts`)
-- `test/` — minimal test files (`local-inference.test.ts`, `ui-inspection.mjs`)
-- `public/data/` — static event dataset and champion model served in production
-- `data/` — labels, eval reports, UCDP imports, training records
-- `docs/` — product docs and runbooks
+A zero-dependency CLI utility (`agent-systems` / `agent-system`) used to bootstrap standard agent environment configurations, operating protocols, and security policies into target repositories.
 
-## Common commands
+## Technology
+
+- Primary languages: JavaScript (ES Modules, Node.js)
+- Frameworks: None (Vanilla JS CLI)
+- Package manager: npm
+- Runtime versions: Node.js >= 16.7.0
+- Database and infrastructure: None
+
+## Commands
+
+Use exact commands.
+
 ```bash
 # Install dependencies
-bun install
+npm install
 
-# Local dev
-bun run dev
+# Link package locally for CLI development/testing
+npm link
 
-# Quality gate
-bun run test:all
-
-# Type checking
-bun run typecheck
-
-# API smoke test
-bun run test:smoke
-
-# Ontology / eval
-bun run ontology:validate
-bun run eval:phase1
-
-# Sync root frontend files to public/
-bun run sync
-
-# Training / surfacing
-bun run train:supervised
-bun run surface:phase1
-bun run ml:autonomous
+# Run help command locally
+node bin/cli.js --help
 ```
 
-## Conventions
-- Root `index.html` + `app.js` must stay identical to `public/index.html` + `public/app.js`; use `bun run sync`.
-- Claims about model improvement must be backed by at least 100 source-checked human labels (`reviewContext.sourceChecked: true`).
-- GDELT country codes are FIPS-like, not ISO.
+## Architecture boundaries
+
+- CLI execution logic is located in `bin/cli.js`.
+- The templates and configuration files copied to user repositories are stored in:
+  - `.agent-system/`
+  - `.agents/`
+  - `.claude/`
+  - `.codex/`
+  - `.opencode/`
+  - `AGENTS.md`
+  - `CLAUDE.md`
+  - `GEMINI.md`
+  - `OPENCODE.md`
+  - `opencode.json`
+- Public CLI compatibility must be maintained for arguments (`init [path]`, `-f`, `--force`, `-h`, `--help`, `-v`, `--version`).
+
+## Coding conventions
+
+- Use standard ES Modules (`import`/`export`) and standard Node.js built-in APIs (`fs`, `path`, `readline`, `url`).
+- Keep the codebase zero-dependency.
+- Ensure cross-platform compatibility of file system paths using standard `path` utilities.
+- Gracefully handle file conflicts by checking for differences and prompting for overwrite when running interactively.
+
+## Protected and sensitive paths
+
+Never inspect or expose secrets. Avoid editing generated or vendored content.
+
+```text
+.env
+.env.*
+secrets/
+credentials/
+**/*.pem
+**/*.key
+node_modules/
+dist/
+build/
+vendor/
+```
+
+## Risk classification overrides
+
+Always classify these as high risk:
+
+- npm package publishing and package version bumping;
+- CLI command argument parsing changes;
+- CI/CD, deployment, or production configuration.
+
+## Definition of done
+
+A change is complete only when:
+
+1. acceptance criteria are satisfied;
+2. the narrowest useful checks pass;
+3. no unrelated changes were introduced;
+4. remaining uncertainty is reported honestly.

@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from "fs/promises";
 import { dirname } from "path";
+import { modelThreshold, scoreEscalationModel, type EscalationModelArtifact } from "../lib/escalation_model.ts";
 import { sourceTierFromUrl } from "../lib/source_credibility.ts";
 
 type Category = "doom" | "bloom";
@@ -46,15 +47,7 @@ interface Phase1Label {
   notes?: string;
 }
 
-interface ModelArtifact {
-  version?: string;
-  target?: { name?: string; definition?: string; labelSource?: string };
-  featureNames?: string[];
-  preprocessing?: { means?: number[]; stds?: number[] };
-  model?: { bias?: number; weights?: number[]; threshold?: number };
-  metrics?: Record<string, unknown>;
-  limitations?: string[];
-}
+type ModelArtifact = EscalationModelArtifact;
 
 interface ScoredRow {
   event: GdeltEvent;
@@ -64,6 +57,7 @@ interface ScoredRow {
 }
 
 const EVENTS_PATH = "public/data/events.json";
+const VERSIONED_CHAMPION_MODEL_PATH = "public/data/models/escalation-model-champion.json";
 const CHAMPION_MODEL_PATH = "public/data/escalation-model.json";
 const SUPERVISED_MODEL_PATH = "public/data/escalation-model-supervised.json";
 const LABEL_PATH = "data/eval/phase1_labels.jsonl";
@@ -285,7 +279,8 @@ function validateLabel(value: unknown, index: number): Phase1Label {
 function isSourceCheckedHumanLabel(label: Phase1Label): boolean {
   return label.labelSource === "human" &&
     label.humanReviewed === true &&
-    label.reviewContext?.sourceChecked === true;
+    label.reviewContext?.sourceChecked === true &&
+    label.reviewContext?.sourceSupportsClaim !== false;
 }
 
 async function loadEvents(): Promise<{ events: GdeltEvent[]; updated?: string; count?: number }> {
@@ -295,7 +290,7 @@ async function loadEvents(): Promise<{ events: GdeltEvent[]; updated?: string; c
 }
 
 async function loadModel(): Promise<{ model: ModelArtifact | null; path: string }> {
-  for (const path of [SUPERVISED_MODEL_PATH, CHAMPION_MODEL_PATH]) {
+  for (const path of [VERSIONED_CHAMPION_MODEL_PATH, SUPERVISED_MODEL_PATH, CHAMPION_MODEL_PATH]) {
     try {
       const data = JSON.parse(await readFile(path, "utf8"));
       return { model: data, path };
@@ -344,13 +339,9 @@ function candidatePrediction(event: GdeltEvent, events: GdeltEvent[], model: Mod
   }
 
   const raw = featuresFor(event, events);
-  const means = model.preprocessing.means ?? [];
-  const stds = model.preprocessing.stds ?? [];
-  const weights = model.model.weights ?? [];
-  const standardized = raw.map((value, index) => (value - (means[index] ?? 0)) / (stds[index] || 1));
-  const logit = (model.model.bias ?? 0) + standardized.reduce((sum, value, index) => sum + value * (weights[index] ?? 0), 0);
-  const probability = sigmoid(logit);
-  const threshold = model.model.threshold ?? 0.5;
+  const probability = scoreEscalationModel(raw, model);
+  if (typeof probability !== "number") return undefined;
+  const threshold = modelThreshold(model);
 
   return {
     score: round(probability),

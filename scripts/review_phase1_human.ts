@@ -5,6 +5,7 @@ import readline from "readline/promises";
 
 type LabelSource = "human" | "llm_article_review" | "bootstrap_current_rules";
 type Severity = "low" | "medium" | "high" | "critical";
+type ReviewQueueMode = "priority" | "uncertain" | "coverage";
 
 interface GdeltEvent {
   id: string;
@@ -26,6 +27,22 @@ interface GdeltEvent {
   severity: Severity;
   continent: string;
   aiSummary?: string;
+  surfaceScore?: number;
+  surfaceRank?: number;
+  surfaceBand?: string;
+  surfaceModelProbability?: number;
+  duplicateOf?: string | null;
+  eventClusterId?: string;
+  eventClusterSize?: number;
+  eventClusterRole?: "representative" | "member";
+  uncertainty?: {
+    level?: "low" | "medium" | "high";
+    score?: number;
+    warnings?: string[];
+    confidenceDrivers?: string[];
+  };
+  activeLearningScore?: number;
+  activeLearningReasons?: string[];
 }
 
 interface Phase1Label {
@@ -50,12 +67,15 @@ interface Args {
   fast: boolean;
   listOnly: boolean;
   limit: number;
+  mode: ReviewQueueMode;
 }
 
 const EVENTS_PATH = "public/data/events.json";
 const LABEL_PATH = "data/eval/phase1_labels.jsonl";
 const MIN_HUMAN_LABELS_FOR_CLAIM = 100;
 const HUMAN_REVIEW_VERSION = "phase1.human-cli.v2";
+const REVIEW_ASSIGN_THRESHOLD = 72;
+const REVIEW_WATCH_THRESHOLD = 52;
 
 function envInt(name: string, fallback: number): number {
   const raw = process.env[name];
@@ -71,6 +91,7 @@ function parseArgs(argv: string[]): Args {
     fast: false,
     listOnly: false,
     limit: envInt("PHASE1_HUMAN_REVIEW_LIMIT", Number.MAX_SAFE_INTEGER),
+    mode: "priority",
   };
 
   for (const arg of argv) {
@@ -81,6 +102,12 @@ function parseArgs(argv: string[]): Args {
       const parsed = Number.parseInt(arg.slice("--limit=".length), 10);
       if (!Number.isFinite(parsed) || parsed < 0) throw new Error("--limit must be a non-negative integer.");
       args.limit = parsed;
+    } else if (arg.startsWith("--mode=")) {
+      const mode = arg.slice("--mode=".length);
+      if (mode !== "priority" && mode !== "uncertain" && mode !== "coverage") {
+        throw new Error("--mode must be priority, uncertain, or coverage.");
+      }
+      args.mode = mode;
     } else if (arg === "-h" || arg === "--help") {
       printHelp();
       process.exit(0);
@@ -96,11 +123,12 @@ function printHelp() {
   console.log(`HopeIndexAI Phase 1 human review
 
 Usage:
-  bun scripts/review_phase1_human.ts [--list] [--limit=20] [--fast] [--force]
+  bun scripts/review_phase1_human.ts [--list] [--limit=20] [--mode=priority|uncertain|coverage] [--fast] [--force]
 
 Options:
   --list       Show the review queue without changing labels.
   --limit=N    Review or list at most N labels.
+  --mode=M     Queue strategy: priority, uncertain, or coverage.
   --fast       One-key accept/edit/skip mode. Accepting still requires source/context check.
   --force      Include labels that are already human-reviewed.
 
@@ -129,10 +157,10 @@ function writeJsonl(rows: unknown[]): string {
   return rows.map((row) => JSON.stringify(row)).join("\n") + "\n";
 }
 
-async function loadEvents(): Promise<Map<string, GdeltEvent>> {
+async function loadEventRows(): Promise<GdeltEvent[]> {
   const parsed = JSON.parse(await readFile(EVENTS_PATH, "utf8"));
   if (!parsed || !Array.isArray(parsed.events)) throw new Error(`${EVENTS_PATH} must contain an events array.`);
-  return new Map(parsed.events.map((event: GdeltEvent) => [event.id, event]));
+  return parsed.events;
 }
 
 async function loadLabels(): Promise<Phase1Label[]> {
@@ -173,23 +201,165 @@ function clipped(value: unknown, max = 240): string {
 function isSourceCheckedHumanLabel(label: Phase1Label): boolean {
   return label.labelSource === "human" &&
     label.humanReviewed === true &&
+    label.reviewContext?.sourceChecked === true &&
+    label.reviewContext?.sourceSupportsClaim !== false;
+}
+
+function isSourceCheckedHumanDecision(label: Phase1Label): boolean {
+  return label.labelSource === "human" &&
+    label.humanReviewed === true &&
     label.reviewContext?.sourceChecked === true;
 }
 
-function selectReviewQueue(labels: Phase1Label[], eventsById: Map<string, GdeltEvent>, args: Args) {
-  return labels
-    .map((label, index) => ({ label, index, event: eventsById.get(label.eventId) }))
-    .filter((row): row is { label: Phase1Label; index: number; event: GdeltEvent } => Boolean(row.event))
-    .filter(({ label }) => args.force || !isSourceCheckedHumanLabel(label))
-    .sort((a, b) => {
-      const aRank = a.label.labelSource === "llm_article_review" ? 0 : a.label.labelSource === "bootstrap_current_rules" ? 1 : 2;
-      const bRank = b.label.labelSource === "llm_article_review" ? 0 : b.label.labelSource === "bootstrap_current_rules" ? 1 : 2;
-      return aRank - bRank;
+function clamp(n: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, n));
+}
+
+function surfacePriority(event: GdeltEvent): number {
+  return Math.round(clamp(
+    Number.isFinite(event.surfaceScore) ? Number(event.surfaceScore) : Number(event.markerRadius ?? 0),
+    0,
+    100
+  ));
+}
+
+function sourceCheckedCoverage(labels: Phase1Label[], eventsById: Map<string, GdeltEvent>) {
+  const sourceCheckedEventIds = new Set<string>();
+  const continentCounts = new Map<string, number>();
+  const themeCounts = new Map<string, number>();
+  const domainCounts = new Map<string, number>();
+
+  for (const label of labels) {
+    if (!isSourceCheckedHumanLabel(label)) continue;
+    const event = eventsById.get(label.eventId);
+    if (!event) continue;
+    sourceCheckedEventIds.add(label.eventId);
+    continentCounts.set(event.continent, (continentCounts.get(event.continent) ?? 0) + 1);
+    if (event.theme) themeCounts.set(event.theme, (themeCounts.get(event.theme) ?? 0) + 1);
+    const domain = hostFromUrl(event.sourceUrl);
+    if (domain) domainCounts.set(domain, (domainCounts.get(domain) ?? 0) + 1);
+  }
+
+  return { sourceCheckedEventIds, continentCounts, themeCounts, domainCounts };
+}
+
+function coverageGapScore(event: GdeltEvent, coverage: ReturnType<typeof sourceCheckedCoverage>): number {
+  const continentCount = coverage.continentCounts.get(event.continent) ?? 0;
+  const themeCount = event.theme ? coverage.themeCounts.get(event.theme) ?? 0 : 0;
+  const domain = hostFromUrl(event.sourceUrl);
+  const domainCount = domain ? coverage.domainCounts.get(domain) ?? 0 : 0;
+
+  return Math.round(clamp(
+    clamp(10 - continentCount * 1.6, 0, 10) +
+    clamp(8 - themeCount * 1.5, 0, 8) +
+    (domain && domainCount === 0 ? 5 : 0),
+    0,
+    25
+  ));
+}
+
+function activeLearningComponents(event: GdeltEvent, coverage: ReturnType<typeof sourceCheckedCoverage>) {
+  const priority = surfacePriority(event);
+  const uncertainty = Math.round(clamp(Number(event.uncertainty?.score ?? 50), 0, 100));
+  const threshold = Math.round(clamp(
+    16 - Math.min(Math.abs(priority - REVIEW_ASSIGN_THRESHOLD), Math.abs(priority - REVIEW_WATCH_THRESHOLD)) * 1.8,
+    0,
+    16
+  ));
+  const coverageScore = coverageGapScore(event, coverage);
+
+  return { priority, uncertainty, threshold, coverage: coverageScore };
+}
+
+function queueScoreForMode(mode: ReviewQueueMode, event: GdeltEvent, components: ReturnType<typeof activeLearningComponents>): number {
+  const thinImportant = components.priority >= REVIEW_WATCH_THRESHOLD && event.uncertainty?.level === "high" ? 14 : 0;
+  const base = components.priority * 0.42 + components.uncertainty * 0.24 + components.threshold + components.coverage + thinImportant;
+
+  if (mode === "uncertain") {
+    return Math.round(clamp(components.uncertainty * 0.55 + components.threshold * 1.6 + components.priority * 0.22 + thinImportant, 0, 100));
+  }
+  if (mode === "coverage") {
+    return Math.round(clamp(components.coverage * 2.5 + components.priority * 0.28 + components.uncertainty * 0.18, 0, 100));
+  }
+  return Math.round(clamp(Number.isFinite(event.activeLearningScore) ? Number(event.activeLearningScore) : base, 0, 100));
+}
+
+function activeLearningReasons(event: GdeltEvent, components: ReturnType<typeof activeLearningComponents>): string[] {
+  const reasons = [
+    components.priority >= REVIEW_ASSIGN_THRESHOLD
+      ? "High-priority surfaced lead."
+      : components.priority >= REVIEW_WATCH_THRESHOLD
+      ? "Near the Watch/Assign decision band."
+      : "Background row may still teach the filter.",
+    components.threshold > 0 ? "Close to a review threshold, so a human label is informative." : null,
+    components.uncertainty >= 66 ? "High uncertainty needs source checking." : components.uncertainty >= 38 ? "Medium uncertainty can improve calibration." : null,
+    components.priority >= REVIEW_WATCH_THRESHOLD && event.uncertainty?.level === "high" ? "Important-looking row with shaky evidence." : null,
+    components.coverage > 10 ? "Under-reviewed region/theme/source coverage gap." : components.coverage > 0 ? "Adds some coverage diversity." : null,
+  ].filter((reason): reason is string => Boolean(reason));
+
+  return [...new Set([...(event.activeLearningReasons ?? []), ...reasons])].slice(0, 6);
+}
+
+function starterLabelForEvent(event: GdeltEvent): Phase1Label {
+  const priority = surfacePriority(event);
+  return {
+    eventId: event.id,
+    labelVersion: "phase1.v1",
+    labelSource: "bootstrap_current_rules",
+    humanReviewed: false,
+    reviewedBy: "label-queue-bootstrap",
+    reviewedAt: new Date(0).toISOString(),
+    labels: {
+      important: priority >= REVIEW_WATCH_THRESHOLD,
+      categoryCorrect: true,
+      severityCorrect: true,
+      summaryQuality: event.aiSummary ? 3 : null,
+    },
+    reviewContext: {
+      bootstrapReason: "Created only as a prior for human review; not source-checked ground truth.",
+      date: event.date,
+      title: eventTitle(event),
+      country: event.country,
+      continent: event.continent,
+      theme: event.theme,
+      category: event.category,
+      severity: event.severity,
+      sourceDomain: hostFromUrl(event.sourceUrl),
+      sourceUrl: event.sourceUrl,
+    },
+    notes: "Bootstrap queue prior. A human must source-check before this can become training/eval truth.",
+  };
+}
+
+function selectReviewQueue(labels: Phase1Label[], events: GdeltEvent[], eventsById: Map<string, GdeltEvent>, args: Args) {
+  const labelById = new Map(labels.map((label, index) => [label.eventId, { label, index }]));
+  const coverage = sourceCheckedCoverage(labels, eventsById);
+
+  return events
+    .map((event) => {
+      const existing = labelById.get(event.id);
+      const label = existing?.label ?? starterLabelForEvent(event);
+      const components = activeLearningComponents(event, coverage);
+      return {
+        label,
+        index: existing?.index ?? -1,
+        event,
+        queueScore: queueScoreForMode(args.mode, event, components),
+        activeLearningReasons: activeLearningReasons(event, components),
+      };
     })
+    .filter(({ label }) => args.force || !isSourceCheckedHumanDecision(label))
+    .filter(({ event }) => event.duplicateOf == null)
+    .filter(({ event }) => event.eventClusterRole !== "member")
+    .sort((a, b) =>
+      b.queueScore - a.queueScore ||
+      surfacePriority(b.event) - surfacePriority(a.event) ||
+      Number(b.event.numMentions ?? 0) - Number(a.event.numMentions ?? 0)
+    )
     .slice(0, args.limit);
 }
 
-function printEvent(row: { label: Phase1Label; event: GdeltEvent }, position: number, total: number, sourceCheckedCount: number) {
+function printEvent(row: { label: Phase1Label; event: GdeltEvent; queueScore?: number; activeLearningReasons?: string[] }, position: number, total: number, sourceCheckedCount: number) {
   const { label, event } = row;
   const context = label.reviewContext ?? {};
 
@@ -202,9 +372,11 @@ function printEvent(row: { label: Phase1Label; event: GdeltEvent }, position: nu
   console.log(`Country/continent: ${event.country || "n/a"} / ${event.continent || "n/a"}`);
   console.log(`Current category/theme/severity: ${event.category} / ${event.theme ?? "unknown"} / ${event.severity}`);
   console.log(`GDELT class: ${event.quadLabel} | Goldstein: ${event.goldstein ?? "n/a"} | Tone: ${event.avgTone ?? "n/a"} | Mentions: ${event.numMentions}`);
+  if (typeof row.queueScore === "number") console.log(`Queue score: ${row.queueScore} | surface=${surfacePriority(event)} | uncertainty=${event.uncertainty?.score ?? "n/a"} | mode signal`);
   console.log(`Source: ${hostFromUrl(event.sourceUrl) || "unknown"} | ${event.sourceUrl || "no URL"}`);
   console.log(`Previous label: ${label.labelSource}, important=${boolText(label.labels.important)}, categoryCorrect=${boolText(label.labels.categoryCorrect)}, severityCorrect=${boolText(label.labels.severityCorrect)}`);
 
+  if (row.activeLearningReasons?.length) console.log(`Why review now: ${row.activeLearningReasons.slice(0, 3).join(" | ")}`);
   if (typeof context.rationale === "string") console.log(`Prior rationale: ${clipped(context.rationale)}`);
   if (typeof context.importantRationale === "string") console.log(`Importance rationale: ${clipped(context.importantRationale)}`);
   if (event.aiSummary) console.log(`AI summary: ${clipped(event.aiSummary)}`);
@@ -287,6 +459,20 @@ async function askBoolean(rl: readline.Interface, question: string, current: boo
   return choice === "yes";
 }
 
+async function askSourceSupportsClaim(rl: readline.Interface): Promise<boolean | "quit"> {
+  const choice = await askChoice(rl, "Does the checked source/context support this event row? [Y/n/q] ", {
+    y: "yes",
+    yes: "yes",
+    n: "no",
+    no: "no",
+    q: "quit",
+    quit: "quit",
+  }, "y");
+
+  if (choice === "quit") return "quit";
+  return choice === "yes";
+}
+
 async function askSummaryQuality(rl: readline.Interface, event: GdeltEvent, current: number | null): Promise<number | null | "quit"> {
   if (!event.aiSummary) return null;
 
@@ -313,6 +499,7 @@ function toHumanLabel(
     categoryCorrect: boolean;
     severityCorrect: boolean;
     summaryQuality: number | null;
+    sourceSupportsClaim: boolean;
     notes: string;
   }
 ): Phase1Label {
@@ -336,6 +523,8 @@ function toHumanLabel(
       ...(previous.reviewContext ?? {}),
       humanReviewVersion: HUMAN_REVIEW_VERSION,
       sourceChecked: true,
+      sourceSupportsClaim: answers.sourceSupportsClaim,
+      outcomeReviewed: false,
       sourceCheckCriteria: "reviewer_inspected_source_url_or_enough_source_context",
       sourceCaveatNotes: answers.notes || null,
       previousLabelSource,
@@ -366,18 +555,25 @@ async function saveLabels(labels: Phase1Label[]) {
   await writeFile(LABEL_PATH, writeJsonl(labels));
 }
 
+function saveLabelInMemory(labels: Phase1Label[], index: number, label: Phase1Label) {
+  if (index >= 0) labels[index] = label;
+  else labels.push(label);
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const eventsById = await loadEvents();
+  const events = await loadEventRows();
+  const eventsById = new Map(events.map((event) => [event.id, event]));
   const labels = await loadLabels();
-  const queue = selectReviewQueue(labels, eventsById, args);
+  const queue = selectReviewQueue(labels, events, eventsById, args);
   const sourceCheckedStart = labels.filter(isSourceCheckedHumanLabel).length;
 
   if (args.listOnly) {
     console.log(`HopeIndexAI Phase 1 human review queue: ${queue.length} label(s) selected.`);
+    console.log(`Mode: ${args.mode}`);
     console.log(`Source-checked human labels now: ${sourceCheckedStart}/${MIN_HUMAN_LABELS_FOR_CLAIM}`);
     for (const [i, row] of queue.entries()) {
-      console.log(`${i + 1}. ${row.event.id} | ${row.event.date} | ${eventTitle(row.event)} | ${row.event.country}/${row.event.continent} | prior=${row.label.labelSource}`);
+      console.log(`${i + 1}. score=${row.queueScore} | ${row.event.id} | ${row.event.date} | ${eventTitle(row.event)} | ${row.event.country}/${row.event.continent} | prior=${row.label.labelSource} | ${row.activeLearningReasons[0] ?? "review candidate"}`);
     }
     return;
   }
@@ -425,17 +621,21 @@ async function main() {
         sourceChecked = true;
 
         if (decision === "accept") {
-          labels[row.index] = toHumanLabel(row.label, row.event, reviewer, {
+          const sourceSupportsClaim = await askSourceSupportsClaim(rl);
+          if (sourceSupportsClaim === "quit") break;
+          const humanLabel = toHumanLabel(row.label, row.event, reviewer, {
             important: row.label.labels.important,
             categoryCorrect: row.label.labels.categoryCorrect,
             severityCorrect: row.label.labels.severityCorrect,
             summaryQuality: row.label.labels.summaryQuality,
+            sourceSupportsClaim,
             notes: "Fast human review: accepted the prior label after checking the source URL or enough source context.",
           });
+          saveLabelInMemory(labels, row.index, humanLabel);
           await saveLabels(labels);
 
           reviewed++;
-          if (!isSourceCheckedHumanLabel(row.label)) sourceCheckedCount++;
+          if (sourceSupportsClaim && !isSourceCheckedHumanLabel(row.label)) sourceCheckedCount++;
           console.log(`Saved source-checked human label ${reviewed}. Source-checked count: ${sourceCheckedCount}/${MIN_HUMAN_LABELS_FOR_CLAIM}`);
           continue;
         }
@@ -457,6 +657,9 @@ async function main() {
         continue;
       }
 
+      const sourceSupportsClaim = await askSourceSupportsClaim(rl);
+      if (sourceSupportsClaim === "quit") break;
+
       const categoryCorrect = await askBoolean(rl, "Is the current doom/bloom category correct?", row.label.labels.categoryCorrect);
       if (categoryCorrect === "quit") break;
 
@@ -468,17 +671,19 @@ async function main() {
 
       const notes = (await rl.question("Notes, source caveats, or correction reason? [optional] ")).trim();
 
-      labels[row.index] = toHumanLabel(row.label, row.event, reviewer, {
+      const humanLabel = toHumanLabel(row.label, row.event, reviewer, {
         important,
         categoryCorrect,
         severityCorrect,
         summaryQuality,
+        sourceSupportsClaim,
         notes,
       });
+      saveLabelInMemory(labels, row.index, humanLabel);
       await saveLabels(labels);
 
       reviewed++;
-      if (!isSourceCheckedHumanLabel(row.label)) sourceCheckedCount++;
+      if (sourceSupportsClaim && !isSourceCheckedHumanLabel(row.label)) sourceCheckedCount++;
       console.log(`Saved source-checked human label ${reviewed}. Source-checked count: ${sourceCheckedCount}/${MIN_HUMAN_LABELS_FOR_CLAIM}`);
     }
   } finally {

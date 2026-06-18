@@ -221,7 +221,8 @@ function hostFromUrl(url: string | undefined): string {
 function isSourceCheckedHumanLabel(label: Phase1Label | undefined): boolean {
   return label?.labelSource === "human" &&
     label.humanReviewed === true &&
-    label.reviewContext?.sourceChecked === true;
+    label.reviewContext?.sourceChecked === true &&
+    label.reviewContext?.sourceSupportsClaim !== false;
 }
 
 function expectedTruthStatus(label: Phase1Label | undefined): TruthStatus {

@@ -180,6 +180,23 @@ Use UCDP GED for historical conflict training and outcome windows.
 
 Use UCDP Candidate for open current row-level organized-violence evidence.
 
+Use GDELT/public event rows as the discovery feed, not the answer key. They are useful because they are broad, current, and carry source URLs. The reviewer must still inspect the article URL or enough source context before the row becomes a human label.
+
+Use YouTube, X/Twitter, and other social/video platforms only as leads or context for now. They are harder to materialize into a repeatable open labeling pipeline because API access, terms, deleted content, rate limits, and redistribution rules can change. If a social/video item matters, anchor the final label to a public, attributable, independently checkable source.
+
+Reviewer queue:
+
+```bash
+bun run labels:queue -- --mode=priority --limit=100
+```
+
+The queue writes:
+
+```text
+data/labeling/reviewer_queue.jsonl
+data/labeling/reviewer_queue_profile.json
+```
+
 Use the 2010+ country-month risk-window builder for the first real ML backbone:
 
 ```bash

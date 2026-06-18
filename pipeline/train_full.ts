@@ -2,18 +2,30 @@ import { promises as fs } from "fs";
 import { dirname, join } from "path";
 import { sourceTierFromUrl } from "../lib/source_credibility.ts";
 
-// Scalable full-dataset logistic regression trainer.
-// Removes the 5,000-sample cap, uses mini-batch SGD, and reports feature importance.
+// Scalable full-dataset trainer.
+// Default learner is a pure TypeScript gradient-boosted tree ensemble so the
+// repo avoids brittle native LightGBM/XGBoost builds while keeping the artifact
+// shape compatible with the API/eval scoring paths.
 // Writes a versioned model artifact to public/data/models/.
 
 const MODEL_PREFIX = "escalation-model";
 const MODEL_DIR = "public/data/models";
 const CHAMPION_PATH = `${MODEL_DIR}/${MODEL_PREFIX}-champion.json`;
+const PREVIOUS_PATH = `${MODEL_DIR}/${MODEL_PREFIX}-previous.json`;
 const EPOCHS = 500;
 const LEARNING_RATE = 0.05;
 const L2 = 0.005;
 const BATCH_SIZE = 256;
+const GBDT_TREES = 80;
+const GBDT_LEARNING_RATE = 0.025;
+const GBDT_MAX_DEPTH = 3;
+const GBDT_MIN_SAMPLES_LEAF = 8;
+const GBDT_L2 = 1.0;
+const GBDT_MAX_BINS = 24;
+const GBDT_MAX_LEAF_VALUE = 5;
 const QUALITY_GATE = { auc: 0.80, f1: 0.35 };
+
+type LearnerKind = "gbdt" | "logreg";
 
 interface GdeltEvent {
   id: string;
@@ -54,6 +66,21 @@ interface TrainingRow {
   event: GdeltEvent;
   features: number[];
   label: number;
+}
+
+interface TreeNode {
+  featureIndex?: number;
+  threshold?: number;
+  left?: TreeNode;
+  right?: TreeNode;
+  value?: number;
+  gain?: number;
+}
+
+interface SplitCandidate {
+  featureIndex: number;
+  threshold: number;
+  gain: number;
 }
 
 const THEMES = ["Diplomacy", "Conflict", "Econ", "Environment", "Humanitarian", "Science"] as const;
@@ -103,6 +130,10 @@ function sigmoid(z: number): number {
 
 function round(n: number): number {
   return Number(n.toFixed(4));
+}
+
+function round6(n: number): number {
+  return Number(n.toFixed(6));
 }
 
 function parseDay(date: string): number {
@@ -289,14 +320,192 @@ function trainMiniBatch(rows: TrainingRow[], epochs: number, lr: number, l2: num
   return { weights, bias };
 }
 
-function chooseThreshold(rows: TrainingRow[], weights: number[], bias: number): number {
+function logregLogit(features: number[], weights: number[], bias: number): number {
+  return bias + features.reduce((sum, v, i) => sum + v * weights[i], 0);
+}
+
+function logregProbability(features: number[], weights: number[], bias: number): number {
+  return sigmoid(logregLogit(features, weights, bias));
+}
+
+function treeValue(node: TreeNode, features: number[]): number {
+  if (typeof node.value === "number") return node.value;
+  const index = node.featureIndex ?? -1;
+  const threshold = node.threshold ?? 0;
+  if (index < 0) return 0;
+  return features[index] <= threshold
+    ? treeValue(node.left ?? { value: 0 }, features)
+    : treeValue(node.right ?? { value: 0 }, features);
+}
+
+function gbdtProbability(
+  features: number[],
+  model: { baseScore: number; learningRate: number; trees: TreeNode[]; linearBase?: { bias: number; weights: number[] } }
+): number {
+  const linearLogit = model.linearBase ? logregLogit(features, model.linearBase.weights, model.linearBase.bias) : 0;
+  const logit = model.baseScore + linearLogit + model.trees.reduce((sum, tree) => sum + model.learningRate * treeValue(tree, features), 0);
+  return sigmoid(logit);
+}
+
+function clamp(n: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, n));
+}
+
+function splitThresholds(rows: TrainingRow[], indices: number[], featureIndex: number): number[] {
+  const values = indices
+    .map((index) => rows[index].features[featureIndex])
+    .filter((value) => Number.isFinite(value))
+    .sort((a, b) => a - b);
+  const unique = Array.from(new Set(values));
+  if (unique.length <= 1) return [];
+
+  const bins = Math.min(GBDT_MAX_BINS, unique.length - 1);
+  const thresholds = new Set<number>();
+  for (let bin = 1; bin <= bins; bin++) {
+    const q = Math.floor((bin * unique.length) / (bins + 1));
+    const rightIndex = Math.min(unique.length - 1, Math.max(1, q));
+    const left = unique[rightIndex - 1];
+    const right = unique[rightIndex];
+    if (right > left) thresholds.add((left + right) / 2);
+  }
+  return [...thresholds];
+}
+
+function splitGain(leftG: number, leftH: number, rightG: number, rightH: number, totalG: number, totalH: number): number {
+  return (leftG ** 2) / (leftH + GBDT_L2) +
+    (rightG ** 2) / (rightH + GBDT_L2) -
+    (totalG ** 2) / (totalH + GBDT_L2);
+}
+
+function findBestSplit(
+  rows: TrainingRow[],
+  indices: number[],
+  gradients: number[],
+  hessians: number[],
+  totalG: number,
+  totalH: number
+): SplitCandidate | null {
+  let best: SplitCandidate | null = null;
+
+  for (let featureIndex = 0; featureIndex < FEATURE_NAMES.length; featureIndex++) {
+    const thresholds = splitThresholds(rows, indices, featureIndex);
+    for (const threshold of thresholds) {
+      let leftG = 0;
+      let leftH = 0;
+      let leftCount = 0;
+      for (const index of indices) {
+        if (rows[index].features[featureIndex] <= threshold) {
+          leftG += gradients[index];
+          leftH += hessians[index];
+          leftCount++;
+        }
+      }
+      const rightCount = indices.length - leftCount;
+      if (leftCount < GBDT_MIN_SAMPLES_LEAF || rightCount < GBDT_MIN_SAMPLES_LEAF) continue;
+      const rightG = totalG - leftG;
+      const rightH = totalH - leftH;
+      const gain = splitGain(leftG, leftH, rightG, rightH, totalG, totalH);
+      if (!best || gain > best.gain) best = { featureIndex, threshold, gain };
+    }
+  }
+
+  return best && best.gain > 1e-8 ? best : null;
+}
+
+function buildTree(
+  rows: TrainingRow[],
+  indices: number[],
+  gradients: number[],
+  hessians: number[],
+  depth: number,
+  featureGains: number[]
+): TreeNode {
+  const totalG = indices.reduce((sum, index) => sum + gradients[index], 0);
+  const totalH = indices.reduce((sum, index) => sum + hessians[index], 0);
+  const leafValue = clamp(totalG / (totalH + GBDT_L2), -GBDT_MAX_LEAF_VALUE, GBDT_MAX_LEAF_VALUE);
+
+  if (depth >= GBDT_MAX_DEPTH || indices.length < GBDT_MIN_SAMPLES_LEAF * 2) {
+    return { value: leafValue };
+  }
+
+  const split = findBestSplit(rows, indices, gradients, hessians, totalG, totalH);
+  if (!split) return { value: leafValue };
+
+  const leftIndices: number[] = [];
+  const rightIndices: number[] = [];
+  for (const index of indices) {
+    if (rows[index].features[split.featureIndex] <= split.threshold) leftIndices.push(index);
+    else rightIndices.push(index);
+  }
+  if (leftIndices.length < GBDT_MIN_SAMPLES_LEAF || rightIndices.length < GBDT_MIN_SAMPLES_LEAF) {
+    return { value: leafValue };
+  }
+
+  featureGains[split.featureIndex] += split.gain;
+  return {
+    featureIndex: split.featureIndex,
+    threshold: split.threshold,
+    gain: split.gain,
+    left: buildTree(rows, leftIndices, gradients, hessians, depth + 1, featureGains),
+    right: buildTree(rows, rightIndices, gradients, hessians, depth + 1, featureGains),
+  };
+}
+
+function roundTree(node: TreeNode): TreeNode {
+  if (typeof node.value === "number") return { value: round6(node.value) };
+  return {
+    featureIndex: node.featureIndex,
+    threshold: round6(node.threshold ?? 0),
+    gain: round6(node.gain ?? 0),
+    left: node.left ? roundTree(node.left) : { value: 0 },
+    right: node.right ? roundTree(node.right) : { value: 0 },
+  };
+}
+
+function trainGbdt(rows: TrainingRow[], initialScores?: number[]) {
+  const positive = rows.filter((r) => r.label === 1).length;
+  const negative = rows.length - positive;
+  const posWeight = rows.length / (2 * Math.max(1, positive));
+  const negWeight = rows.length / (2 * Math.max(1, negative));
+  const baseScore = initialScores ? 0 : Math.log((positive + 1) / (negative + 1));
+  const scores = initialScores ? [...initialScores] : Array(rows.length).fill(baseScore);
+  const trees: TreeNode[] = [];
+  const featureGains = Array(FEATURE_NAMES.length).fill(0);
+  const allIndices = rows.map((_, index) => index);
+
+  for (let iteration = 0; iteration < GBDT_TREES; iteration++) {
+    const gradients = Array(rows.length).fill(0);
+    const hessians = Array(rows.length).fill(0);
+    for (let i = 0; i < rows.length; i++) {
+      const p = sigmoid(scores[i]);
+      const weight = rows[i].label === 1 ? posWeight : negWeight;
+      gradients[i] = weight * (rows[i].label - p);
+      hessians[i] = Math.max(1e-6, weight * p * (1 - p));
+    }
+
+    const tree = buildTree(rows, allIndices, gradients, hessians, 0, featureGains);
+    trees.push(tree);
+    for (let i = 0; i < rows.length; i++) {
+      scores[i] += GBDT_LEARNING_RATE * treeValue(tree, rows[i].features);
+    }
+  }
+
+  return {
+    baseScore,
+    learningRate: GBDT_LEARNING_RATE,
+    trees,
+    roundedTrees: trees.map(roundTree),
+    featureGains,
+  };
+}
+
+function chooseThreshold(rows: TrainingRow[], predict: (features: number[]) => number): number {
   let best = 0.5;
   let bestF1 = 0;
   for (let t = 0.05; t <= 0.95; t += 0.01) {
     let tp = 0, fp = 0, fn = 0;
     for (const row of rows) {
-      const z = bias + row.features.reduce((sum, v, i) => sum + v * weights[i], 0);
-      const p = sigmoid(z);
+      const p = predict(row.features);
       const pred = p >= t ? 1 : 0;
       if (pred === 1 && row.label === 1) tp++;
       else if (pred === 1 && row.label === 0) fp++;
@@ -311,14 +520,13 @@ function chooseThreshold(rows: TrainingRow[], weights: number[], bias: number): 
   return best;
 }
 
-function metrics(rows: TrainingRow[], weights: number[], bias: number, threshold: number) {
+function metrics(rows: TrainingRow[], predict: (features: number[]) => number, threshold: number) {
   let tp = 0, fp = 0, tn = 0, fn = 0;
   const probs: number[] = [];
   const actuals: number[] = [];
 
   for (const row of rows) {
-    const z = bias + row.features.reduce((sum, v, i) => sum + v * weights[i], 0);
-    const p = sigmoid(z);
+    const p = predict(row.features);
     const pred = p >= threshold ? 1 : 0;
     probs.push(p);
     actuals.push(row.label);
@@ -382,6 +590,11 @@ async function main() {
   const eventsPath = args.find((a) => a.startsWith("--events="))?.slice("--events=".length) ?? "public/data/events.json";
   const labelsPath = args.find((a) => a.startsWith("--labels="))?.slice("--labels=".length) ?? "data/training/supervised_labels.jsonl";
   const outputPath = args.find((a) => a.startsWith("--output="))?.slice("--output=".length);
+  const learner = (args.find((a) => a.startsWith("--learner="))?.slice("--learner=".length) ?? "gbdt") as LearnerKind;
+  if (!(["gbdt", "logreg"] as LearnerKind[]).includes(learner)) {
+    console.error(`[train_full] Unsupported --learner=${learner}. Use --learner=gbdt or --learner=logreg.`);
+    process.exit(1);
+  }
 
   console.log(`[train_full] Loading events from ${eventsPath}...`);
   const raw = JSON.parse(await fs.readFile(eventsPath, "utf8"));
@@ -427,27 +640,74 @@ async function main() {
   console.log("[train_full] Standardizing features...");
   const { means, stds } = standardize([...trainRows, ...valRows, ...testRows], trainRows);
 
-  console.log(`[train_full] Training mini-batch logistic regression (${EPOCHS} epochs, batch ${BATCH_SIZE})...`);
-  const { weights, bias } = trainMiniBatch(trainRows, EPOCHS, LEARNING_RATE, L2, BATCH_SIZE);
+  console.log(`[train_full] Training ${learner === "gbdt" ? "gradient-boosted trees" : "mini-batch logistic regression"}...`);
+  let predict: (features: number[]) => number;
+  let modelBody: Record<string, unknown>;
+  let learnerVersionName: string;
+  let featureImportance: Array<{ name: string; importance: number }>;
+
+  if (learner === "gbdt") {
+    // Initialize from the stable linear learner, then fit shallow trees to the
+    // remaining logistic-loss gradients. This keeps ranking quality from the
+    // current model while adding non-linear corrections.
+    const linearBase = trainMiniBatch(trainRows, EPOCHS, LEARNING_RATE, L2, BATCH_SIZE);
+    const initialScores = trainRows.map((row) => logregLogit(row.features, linearBase.weights, linearBase.bias));
+    const boosted = trainGbdt(trainRows, initialScores);
+    const boostedWithLinearBase = { ...boosted, linearBase };
+    predict = (features) => gbdtProbability(features, boostedWithLinearBase);
+    learnerVersionName = "escalation-gbdt-full";
+    modelBody = {
+      kind: "gradient_boosted_trees",
+      baseScore: round6(boosted.baseScore),
+      linearBase: {
+        bias: round(linearBase.bias),
+        weights: linearBase.weights.map(round),
+      },
+      learningRate: boosted.learningRate,
+      trees: boosted.roundedTrees,
+      threshold: 0.5,
+      iterations: GBDT_TREES,
+      maxDepth: GBDT_MAX_DEPTH,
+      minSamplesLeaf: GBDT_MIN_SAMPLES_LEAF,
+      maxBins: GBDT_MAX_BINS,
+      l2: GBDT_L2,
+    };
+    featureImportance = FEATURE_NAMES
+      .map((name, i) => ({ name, importance: round6(boosted.featureGains[i] ?? 0) }))
+      .sort((a, b) => b.importance - a.importance);
+  } else {
+    const { weights, bias } = trainMiniBatch(trainRows, EPOCHS, LEARNING_RATE, L2, BATCH_SIZE);
+    predict = (features) => logregProbability(features, weights, bias);
+    learnerVersionName = "escalation-logreg-full";
+    modelBody = {
+      kind: "logistic_regression",
+      bias: round(bias),
+      weights: weights.map(round),
+      threshold: 0.5,
+      l2: L2,
+      epochs: EPOCHS,
+      batchSize: BATCH_SIZE,
+    };
+    // Feature importance = |weight * std| so it reflects input-scale contribution.
+    featureImportance = FEATURE_NAMES
+      .map((name, i) => ({ name, importance: Math.abs(weights[i] * stds[i]) }))
+      .sort((a, b) => b.importance - a.importance);
+  }
 
   console.log("[train_full] Choosing threshold and computing metrics...");
-  const threshold = chooseThreshold(valRows, weights, bias);
+  const threshold = chooseThreshold(valRows, predict);
+  modelBody.threshold = round(threshold);
 
-  const trainMetrics = metrics(trainRows, weights, bias, threshold);
-  const valMetrics = metrics(valRows, weights, bias, threshold);
-  const testMetrics = metrics(testRows, weights, bias, threshold);
-
-  // Feature importance = |weight * std| so it reflects input-scale contribution.
-  const featureImportance = FEATURE_NAMES
-    .map((name, i) => ({ name, importance: Math.abs(weights[i] * stds[i]) }))
-    .sort((a, b) => b.importance - a.importance);
+  const trainMetrics = metrics(trainRows, predict, threshold);
+  const valMetrics = metrics(valRows, predict, threshold);
+  const testMetrics = metrics(testRows, predict, threshold);
 
   const versionedPath = outputPath ?? (await nextVersionedPath());
   const versionMatch = versionedPath.match(/v(\d+)\.json$/);
   const versionNumber = versionMatch ? versionMatch[1] : "0";
 
   const model = {
-    version: `escalation-logreg-full-v${versionNumber}`,
+    version: `${learnerVersionName}-v${versionNumber}`,
     trainedAt: new Date().toISOString(),
     target: {
       name: "ucdp_organized_violence_match",
@@ -465,19 +725,13 @@ async function main() {
     },
     featureNames: FEATURE_NAMES,
     preprocessing: { means: means.map(round), stds: stds.map(round) },
-    model: {
-      kind: "logistic_regression",
-      bias: round(bias),
-      weights: weights.map(round),
-      threshold: round(threshold),
-      l2: L2,
-      epochs: EPOCHS,
-      batchSize: BATCH_SIZE,
-    },
+    model: modelBody,
     metrics: { train: trainMetrics, val: valMetrics, test: testMetrics },
     featureImportance,
     limitations: [
-      "Pure-JS mini-batch logistic regression is an interim scalable learner; LightGBM/XGBoost is the planned production learner.",
+      learner === "gbdt"
+        ? "Pure-TypeScript gradient-boosted trees approximate a LightGBM/XGBoost-class learner without native build dependencies."
+        : "Pure-JS mini-batch logistic regression is retained as a fallback learner.",
       "Training labels mix UCDP organized-violence matches with human importance judgments.",
       "UCDP covers organized lethal violence only; other signal types are out of scope.",
     ],
@@ -489,6 +743,12 @@ async function main() {
 
   const passesGate = testMetrics.auc >= QUALITY_GATE.auc && testMetrics.f1 >= QUALITY_GATE.f1;
   if (passesGate) {
+    try {
+      await fs.copyFile(CHAMPION_PATH, PREVIOUS_PATH);
+      console.log(`[train_full] Backed up previous champion to ${PREVIOUS_PATH}`);
+    } catch {
+      // No prior champion yet.
+    }
     await fs.copyFile(versionedPath, CHAMPION_PATH);
     console.log(`[train_full] Promoted to champion ${CHAMPION_PATH} (AUC ${testMetrics.auc}, F1 ${testMetrics.f1})`);
   } else {

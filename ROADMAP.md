@@ -219,19 +219,20 @@ The candidate model now beats the baseline on the source-checked eval set, and t
 
 ## Phase 4 — Scale (before high traffic)
 
-### 11. Scalable learner — RESOLVED ✅ (interim full-dataset trainer)
+### 11. Scalable learner — RESOLVED ✅ (GBDT-class full-dataset trainer)
 
 **Why:** `train_supervised.ts` samples 5,000 rows because full historical GDELT datasets are too large for the current pure-JS logistic regression. A product should train on everything.
 
 **Concrete work:**
-- ✅ Create `pipeline/train_full.ts`: a pure-JS mini-batch logistic regression trainer that removes the sample cap.
+- ✅ Create `pipeline/train_full.ts`: a pure-TypeScript gradient-boosted tree trainer (`--learner=gbdt`, default) with a logistic linear base and shallow tree corrections.
 - ✅ Train on the full labeled event set (currently 1,500 events) with no row cap.
 - ✅ Add feature importance reporting to the model artifact.
-- ✅ Maintain AUC ≥ 0.80 / F1 ≥ 0.35 production quality gate (trained model AUC=0.919, F1=0.40).
-- (Deferred) Swap the interim learner for **LightGBM** or **XGBoost** Node/Bun bindings when scale demands it; the model artifact format is kept compatible.
+- ✅ Maintain AUC ≥ 0.80 / F1 ≥ 0.35 production quality gate (GBDT champion AUC=0.904, F1=0.444; Phase 1 source-checked F1=0.766).
+- ✅ Update API/eval/scoring paths to support both `logistic_regression` and `gradient_boosted_trees` artifacts.
+- (Deferred) Native **LightGBM**/**XGBoost** bindings remain optional for future scale; npm packages require native addon builds, so the production path now avoids that deployment risk.
 
 **Requires human work:** No.
-**Estimated effort:** Large for full LightGBM; Small for the interim full-dataset trainer (done).
+**Estimated effort:** Large for native LightGBM; Medium for the pure-TypeScript GBDT path (done).
 
 ---
 

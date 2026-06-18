@@ -31,6 +31,7 @@ The goal is to catalogue messy world data into records that answer:
 
 ```text
 public/data/events.json
+-> data/labeling/reviewer_queue.jsonl
 -> data/eval/phase1_labels.jsonl
 -> records builder
 -> data/training/phase2_records.jsonl
@@ -70,6 +71,7 @@ data/training/phase2_records.jsonl
 Build them with:
 
 ```bash
+bun run labels:queue
 bun run records:build
 ```
 
@@ -339,9 +341,9 @@ Human review still decides whether the move matters for this product.
 
 ## Current Limitation
 
-The current Phase 1 human review CLI records `sourceChecked`, but it does not separately ask whether the source explicitly supports every claim field. For now, the training builder treats source-checked human labels as usable importance truth and records that support assessment as inferred from the Phase 1 review process.
+The Phase 1 human review CLI records `sourceChecked` and now asks whether the checked source/context supports the event row. Older labels without that field are treated as source-supported for backward compatibility. New labels with `sourceSupportsClaim: false` remain auditable, but they are excluded from train/eval truth.
 
-Future review should add explicit fields:
+Human review stores these explicit fields:
 
 ```json
 {

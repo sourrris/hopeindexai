@@ -8,12 +8,14 @@ import {
   buildSupervisedLabel,
   SupervisedLabel,
 } from "../lib/ucdp.ts";
+import { modelThreshold, scoreEscalationModel, type EscalationModelArtifact } from "../lib/escalation_model.ts";
 import { sourceTierFromUrl } from "../lib/source_credibility.ts";
 
 const DEFAULT_EVENTS_PATH = "data/holdout/events_7d.json";
 const DEFAULT_DAYS = 7;
 const UCDP_CANDIDATE_PATH = "data/external/ucdp_candidate/candidate_events_compact.jsonl";
 const UCDP_GED_PATH = "data/external/ucdp/ged_events_compact.jsonl";
+const VERSIONED_CHAMPION_MODEL_PATH = "public/data/models/escalation-model-champion.json";
 const CHAMPION_MODEL_PATH = "data/models/escalation-model-supervised-latest.json";
 const FALLBACK_MODEL_PATH = "public/data/escalation-model.json";
 const REPORT_PATH = "data/eval/future_holdout_report.json";
@@ -42,14 +44,7 @@ interface HoldoutEvent {
   continent: string;
 }
 
-interface ModelArtifact {
-  version?: string;
-  target?: { name?: string; definition?: string };
-  featureNames?: string[];
-  preprocessing?: { means?: number[]; stds?: number[] };
-  model?: { kind?: string; bias?: number; weights?: number[]; threshold?: number };
-  metrics?: Record<string, any>;
-}
+type ModelArtifact = EscalationModelArtifact;
 
 const THEMES = ["Diplomacy", "Conflict", "Econ", "Environment", "Humanitarian", "Science"] as const;
 const CONTINENTS = ["Americas", "Europe", "Middle East", "Africa", "Asia", "Oceania", "Other"] as const;
@@ -194,7 +189,7 @@ async function readJsonl<T>(path: string): Promise<T[]> {
 }
 
 async function loadModel(preferredPath: string | null): Promise<{ model: ModelArtifact; path: string }> {
-  for (const path of [preferredPath, CHAMPION_MODEL_PATH, FALLBACK_MODEL_PATH].filter(Boolean) as string[]) {
+  for (const path of [preferredPath, VERSIONED_CHAMPION_MODEL_PATH, CHAMPION_MODEL_PATH, FALLBACK_MODEL_PATH].filter(Boolean) as string[]) {
     try {
       const data = JSON.parse(await fs.readFile(path, "utf8"));
       return { model: data, path };
@@ -351,23 +346,10 @@ function featuresFor(event: HoldoutEvent, dayIndex: Map<number, HoldoutEvent[]>)
   ];
 }
 
-function sigmoid(z: number): number {
-  if (z > 35) return 1;
-  if (z < -35) return 0;
-  return 1 / (1 + Math.exp(-z));
-}
-
 function scoreEvent(event: HoldoutEvent, dayIndex: Map<number, HoldoutEvent[]>, model: ModelArtifact): { probability: number; prediction: boolean } {
-  const means = model.preprocessing?.means ?? [];
-  const stds = model.preprocessing?.stds ?? [];
-  const weights = model.model?.weights ?? [];
-  const bias = model.model?.bias ?? 0;
-  const threshold = model.model?.threshold ?? 0.5;
-
   const raw = featuresFor(event, dayIndex);
-  const standardized = raw.map((v, i) => (v - (means[i] ?? 0)) / (stds[i] || 1));
-  const logit = bias + standardized.reduce((sum, v, i) => sum + v * (weights[i] ?? 0), 0);
-  const probability = sigmoid(logit);
+  const probability = scoreEscalationModel(raw, model) ?? 0.5;
+  const threshold = modelThreshold(model);
   return { probability: Number(probability.toFixed(4)), prediction: probability >= threshold };
 }
 
@@ -484,7 +466,8 @@ async function main() {
   }));
 
   const probs = scored.map((s) => s.probability);
-  const metrics = computeMetrics(probs, labelValues, model.model?.threshold ?? 0.5);
+  const threshold = modelThreshold(model);
+  const metrics = computeMetrics(probs, labelValues, threshold);
 
   const sortedByProb = scored.slice().sort((a, b) => b.probability - a.probability);
   const sortedLabels = sortedByProb.map((s) => s.label);
@@ -509,7 +492,7 @@ async function main() {
       path: modelPath,
       version: model.version ?? "unknown",
       target: model.target?.name ?? "unknown",
-      threshold: model.model?.threshold ?? 0.5,
+      threshold,
     },
     labelCounts: { positives, negatives, baseRate: positives / Math.max(1, events.length) },
     metrics,

@@ -3,10 +3,10 @@
 ## Model identifier
 
 - **Name:** HopeIndexAI escalation supervised model
-- **Version:** `escalation-logreg-supervised-v1`
+- **Version:** `escalation-gbdt-full-v3`
 - **Target:** `ucdp_organized_violence_match`
-- **Artifact:** `data/models/escalation-model-supervised-latest.json` / `public/data/escalation-model-supervised.json`
-- **Type:** Logistic regression (pure TypeScript/Bun implementation)
+- **Artifact:** `public/data/models/escalation-model-champion.json` (versioned source: `public/data/models/escalation-model-v3.json`)
+- **Type:** Gradient-boosted shallow trees with a logistic linear base (pure TypeScript/Bun implementation; no native LightGBM/XGBoost addon required)
 
 ## Intended use
 
@@ -38,17 +38,17 @@ Metrics are reported on internal temporal splits and on the source-checked human
 
 | Split | AUC | F1 | Precision | Recall |
 |-------|-----|----|-----------|--------|
-| Train | 0.986 | 0.485 | 0.471 | 0.500 |
-| Validation | 0.780 | 0.400 | 0.500 | 0.333 |
-| Test | 0.916 | 0.400 | 0.333 | 0.500 |
+| Train | 0.997 | 0.667 | 0.500 | 1.000 |
+| Validation | 0.809 | 0.571 | 0.500 | 0.667 |
+| Test | 0.904 | 0.444 | 0.400 | 0.500 |
 
 ### Source-checked human Phase 1 eval
 
 | System | F1 | Precision | Recall |
 |--------|----|-----------|--------|
 | Baseline (surface score) | 0.353 | 0.214 | 1.000 |
-| Candidate model | 0.731 | 0.613 | 0.905 |
-| Surface policy (combined) | 0.667 | 0.714 | 0.625 |
+| Candidate model | 0.766 | 0.692 | 0.857 |
+| Surface policy (combined) | 0.639 | 0.719 | 0.575 |
 
 The candidate model currently beats the simple baseline on the source-checked eval set. The surface policy remains the strongest combined signal.
 
@@ -70,7 +70,7 @@ A future holdout validation pipeline exists (`bun run eval:future-holdout`), but
 
 ```bash
 bun run labels:build          # merge UCDP + human labels
-bun run train:supervised      # train new challenger
+bun run train:full            # train new versioned GBDT challenger/champion
 bun run eval:phase1           # evaluate against source-checked labels
 bun run surface:phase1        # refresh surfacing scores
 ```

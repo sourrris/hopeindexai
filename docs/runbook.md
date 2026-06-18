@@ -49,7 +49,7 @@ bun run ml:rollback
 ```
 
 What it does:
-- Copies `public/data/escalation-model-previous.json` over `public/data/escalation-model.json`.
+- Copies `public/data/models/escalation-model-previous.json` over `public/data/models/escalation-model-champion.json` (falling back to legacy paths if needed).
 - Logs the rollback to `data/models/promotion_log.jsonl`.
 
 After rollback, restart the server or wait for the model cache TTL (5 minutes) to expire. Verify:
@@ -100,7 +100,7 @@ Common alerts and how to triage them:
 
 ```bash
 bun run labels:build
-bun run train:supervised
+bun run train:full
 bun run eval:phase1
 ```
 

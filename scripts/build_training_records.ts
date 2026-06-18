@@ -440,7 +440,8 @@ function futureEscalationTarget(target: GdeltEvent, events: GdeltEvent[]): Train
 function isSourceCheckedHumanLabel(label: Phase1Label): boolean {
   return label.labelSource === "human" &&
     label.humanReviewed === true &&
-    label.reviewContext?.sourceChecked === true;
+    label.reviewContext?.sourceChecked === true &&
+    label.reviewContext?.sourceSupportsClaim !== false;
 }
 
 function truthStatus(label: Phase1Label): TruthStatus {
@@ -504,6 +505,14 @@ function eventType(event: GdeltEvent): string {
 
 function sourceSupport(label: Phase1Label): Pick<TrainingRecord["source"], "checked" | "supportsClaim" | "supportStatus"> {
   const checked = label.reviewContext?.sourceChecked === true;
+  const explicitSupportsClaim = label.reviewContext?.sourceSupportsClaim;
+  if (checked && typeof explicitSupportsClaim === "boolean") {
+    return {
+      checked,
+      supportsClaim: explicitSupportsClaim,
+      supportStatus: "explicit",
+    };
+  }
   if (isSourceCheckedHumanLabel(label)) {
     return {
       checked,
@@ -521,6 +530,7 @@ function sourceSupport(label: Phase1Label): Pick<TrainingRecord["source"], "chec
 function excludeReasons(event: GdeltEvent, label: Phase1Label, actors: TrainingRecord["event"]["canonicalActors"]): string[] {
   const reasons: string[] = [];
   if (!isSourceCheckedHumanLabel(label)) reasons.push("not_source_checked_human_label");
+  if (label.reviewContext?.sourceSupportsClaim === false) reasons.push("source_does_not_support_claim");
   if (!event.sourceUrl) reasons.push("missing_source_url");
   if (event.duplicateOf) reasons.push("duplicate_public_row");
   if (actors.length === 0) reasons.push("missing_actor_resolution");
