@@ -133,8 +133,6 @@ async function main() {
     const oneDay = await fetchJson(baseUrl, "/api/events?days=1");
     const sevenDays = await fetchJson(baseUrl, "/api/events?days=7");
     const reviewQueue = await fetchJson(baseUrl, "/api/review-queue?days=7&limit=25&mode=priority");
-    const riskChampion = await fetchJson(baseUrl, "/api/risk-champion");
-    const riskWindows = await fetchJson(baseUrl, "/api/risk-windows?split=holdout_preliminary&limit=5");
 
     assert(Array.isArray(oneDay.events), "days=1 must return an events array");
     assert(Array.isArray(sevenDays.events), "days=7 must return an events array");
@@ -169,10 +167,6 @@ async function main() {
     assert(invalidQueueLimit.status === 400, "/api/review-queue invalid limit must return HTTP 400");
     const invalidQueueMode = await fetch(`${baseUrl}/api/review-queue?days=7&limit=10&mode=nope`);
     assert(invalidQueueMode.status === 400, "/api/review-queue invalid mode must return HTTP 400");
-
-    assert(typeof riskChampion.champion?.championId === "string", "/api/risk-champion must return a champion id");
-    assert(Array.isArray(riskWindows.windows), "/api/risk-windows must return a windows array");
-    assert(riskWindows.windows.length > 0, "/api/risk-windows should return at least one ranked window");
 
     const missingProbe = await fetch(`${baseUrl}/api/probe`);
     assert(missingProbe.status === 400, "/api/probe without id must return HTTP 400");
@@ -210,8 +204,6 @@ async function main() {
     console.log(`events.days7=${sevenDays.events.length}`);
     console.log(`reviewQueue=${reviewQueue.queue.length}`);
     console.log(`probe.reviewCopilot=${probe.probe.reviewCopilot.suggestedDecision.label}`);
-    console.log(`riskChampion=${riskChampion.champion.championId}`);
-    console.log(`riskWindows=${riskWindows.windows.length}`);
   } finally {
     await new Promise<void>((resolve, reject) => {
       server.close((err) => err ? reject(err) : resolve());

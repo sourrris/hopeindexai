@@ -380,10 +380,10 @@ function computeMetrics(probs: number[], labels: number[], threshold: number) {
     let sampledPos = posProbs;
     let sampledNeg = negProbs;
     if (sampledPos.length > MAX_AUC_SAMPLES) {
-      sampledPos = sampledPos.sort(() => Math.random() - 0.5).slice(0, MAX_AUC_SAMPLES);
+      sampledPos = sampleOrdered(sampledPos, MAX_AUC_SAMPLES);
     }
     if (sampledNeg.length > MAX_AUC_SAMPLES) {
-      sampledNeg = sampledNeg.sort(() => Math.random() - 0.5).slice(0, MAX_AUC_SAMPLES);
+      sampledNeg = sampleOrdered(sampledNeg, MAX_AUC_SAMPLES);
     }
     let concordant = 0;
     let ties = 0;

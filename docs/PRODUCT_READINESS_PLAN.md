@@ -242,16 +242,22 @@ http://localhost:3000
 
 ### Phase C: Add CI Quality Gate
 
+Status:
+
+```text
+Done for the MVP quality gate.
+```
+
 Goal:
 
 ```text
 Make GitHub enforce the same checks that pass locally.
 ```
 
-Remaining:
+Done:
 
-- Add a GitHub Actions workflow for pull requests and pushes.
-- Run:
+- GitHub Actions runs on pull requests and pushes.
+- The quality gate runs:
 
 ```bash
 bun install
@@ -262,18 +268,25 @@ bun run records:validate
 bun run pipeline:validate
 ```
 
-Done when:
+Keep watching:
 
-- GitHub shows a passing CI check.
-- A broken typecheck, API smoke test, or pipeline validation blocks merge.
+- GitHub should continue to show a passing `Quality Gate` check.
+- A broken typecheck, API smoke test, or pipeline validation should block merge.
+- Scheduled enrichment should publish a pull request instead of pushing directly to protected `main`.
 
 Proof:
 
 ```text
-GitHub Actions run passes on the default branch.
+GitHub Actions `Quality Gate` run passes on the default branch.
 ```
 
 ### Phase D: Make Training Reproducible
+
+Status:
+
+```text
+Done for current full-training path.
+```
 
 Goal:
 
@@ -281,16 +294,16 @@ Goal:
 Make model training rerunnable and explainable.
 ```
 
-Remaining:
+Done:
 
-- Replace unseeded `Math.random()` shuffling in `pipeline/train_full.ts`.
-- Add a fixed seed to the model artifact.
-- Document the seed and training command in the model card.
+- `pipeline/train_full.ts` uses seeded shuffling for training.
+- The current champion model artifact records seed `20260620`.
+- The model card documents the seed and training command.
 
-Done when:
+Keep watching:
 
 - Running the same training command twice with the same inputs gives stable metrics.
-- The model artifact records the seed.
+- Future training scripts should not add unseeded randomness.
 
 Proof:
 
@@ -501,4 +514,3 @@ So I treat it as a triage assistant, not a verified forecasting system.
 ```
 
 That answer is stronger than overclaiming.
-
