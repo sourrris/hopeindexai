@@ -56,6 +56,13 @@ const QUEUE_MODES = [
   { value: "coverage", label: "Coverage gaps" },
 ];
 
+const PROOF_METRICS = [
+  { label: "Answer key", value: "101 labels", note: "source-checked by humans" },
+  { label: "Model F1", value: "0.75", note: "candidate on Phase 1" },
+  { label: "Baseline F1", value: "0.35", note: "simple surface rule" },
+  { label: "Future holdout", value: "AUC n/a", note: "zero verified positives" },
+];
+
 const STRATEGIC_ACTORS = new Set([
   "US", "USA", "AMERICAN", "UNITED", "RUSSIA", "RUSSIAN", "UKRAINE", "KYIV", "KIEV",
   "NATO", "IRAN", "ISRAEL", "ISRAELI", "LEBANON", "HEZBOLLAH", "HAMAS", "CHINA",
@@ -159,6 +166,12 @@ function sourceTierLabel(tier) {
   if (tier === 1) return "Tier 1 — trusted major outlet";
   if (tier === 3) return "Tier 3 — state/aggregator/farm";
   return "Tier 2 — regional/unknown";
+}
+
+function modelProbabilityPct(event) {
+  return Number.isFinite(event.surfaceModelProbability)
+    ? `${Math.round(event.surfaceModelProbability * 100)}%`
+    : "n/a";
 }
 
 function simpleEventTitle(event) {
@@ -604,7 +617,7 @@ function IconExternalLink() {
 
 // ── Top bar ───────────────────────────────────────────────────────────────────
 
-function TopBar({ globalHopeAverage, eventCount, activeView, onViewChange, dataSource }) {
+function TopBar({ dataSource }) {
   return (
     <header className="topbar" role="banner">
       <span className="topbar-brand">
@@ -612,54 +625,12 @@ function TopBar({ globalHopeAverage, eventCount, activeView, onViewChange, dataS
       </span>
 
       <div className="topbar-center">
-        <div className="view-tabs" role="tablist" aria-label="HopeIndex views">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeView === "queue"}
-            className={"view-tab" + (activeView === "queue" ? " on" : "")}
-            onClick={() => onViewChange("queue")}
-          >
-            Review List
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeView === "events"}
-            className={"view-tab" + (activeView === "events" ? " on" : "")}
-            onClick={() => onViewChange("events")}
-          >
-            Map
-          </button>
-        </div>
+        <div className="product-mode">Model-Guided Review</div>
         <div className="live-badge" role="status" aria-label={dataSource === "live" ? "Live GDELT feed loaded" : "Saved demo data loaded"}>
           <span className="live-dot" aria-hidden="true" />
           {dataSource === "live" ? "LIVE" : "DEMO"}
         </div>
-        {eventCount > 0 && (
-          <div className="topbar-stats">
-            <span className="stat-pill hope">
-              <span className="stat-dot hope" aria-hidden="true" />
-              Average signal: {globalHopeAverage.toFixed(1)}/100
-            </span>
-            <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--text-sec)", marginLeft: 2 }}>
-              ({eventCount.toLocaleString()} rows)
-            </span>
-          </div>
-        )}
-      </div>
-
-      <div className="topbar-right">
-        <a
-          href={GITHUB_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="gh-btn"
-          aria-label="View HopeIndexAI on GitHub"
-        >
-          <IconGithub />
-          HopeIndexAI
-        </a>
+        <div className="topbar-proof">101 labels · model F1 0.75 · baseline F1 0.35 · holdout AUC unavailable</div>
       </div>
     </header>
   );
@@ -1866,9 +1837,7 @@ function ReviewerCopilotPanel({ event, apiKey, aiReady }) {
 
 function GlobalRiskQueue({ events, loading, selectedEvent, onFocusEvent, onOpenMap, filters, onFilter, apiKey, aiReady }) {
   const [decisionById, setDecisionById] = useState(readAssignmentDecisions);
-  const [queueMode, setQueueMode] = useState("priority");
   const [reviewQueue, setReviewQueue] = useState(null);
-  const [queueMeta, setQueueMeta] = useState(null);
   const [queueLoading, setQueueLoading] = useState(false);
   const [queueError, setQueueError] = useState("");
 
@@ -1881,18 +1850,16 @@ function GlobalRiskQueue({ events, loading, selectedEvent, onFocusEvent, onOpenM
     setQueueLoading(true);
     setQueueError("");
 
-    fetch(`/api/review-queue?days=${filters.days}&limit=80&mode=${queueMode}&source=${filters.source ?? "static"}`, { signal: ctrl.signal })
+    fetch(`/api/review-queue?days=${filters.days}&limit=80&mode=priority&source=${filters.source ?? "static"}`, { signal: ctrl.signal })
       .then((r) => r.json())
       .then((data) => {
         if (data.error) throw new Error(data.error);
         setReviewQueue(Array.isArray(data.queue) ? data.queue : []);
-        setQueueMeta({ counts: data.counts, strategy: data.strategy, caveat: data.caveat });
       })
       .catch((err) => {
         if (err.name !== "AbortError") {
           setQueueError(err.message ?? "Failed to load active-learning queue.");
           setReviewQueue(null);
-          setQueueMeta(null);
         }
       })
       .finally(() => {
@@ -1900,7 +1867,7 @@ function GlobalRiskQueue({ events, loading, selectedEvent, onFocusEvent, onOpenM
       });
 
     return () => ctrl.abort();
-  }, [filters.days, filters.source, queueMode]);
+  }, [filters.days, filters.source]);
 
   const rankedEvents = useMemo(() => {
     const packets = Array.isArray(reviewQueue)
@@ -1974,48 +1941,36 @@ function GlobalRiskQueue({ events, loading, selectedEvent, onFocusEvent, onOpenM
   };
 
   return (
-    <section className="queue-view" aria-label="Assignment queue">
-      <div className="queue-hero">
+    <section className="review-view" aria-label="Model-guided review">
+      <div className="review-hero">
         <div>
-          <div className="risk-kicker">Review queue</div>
-          <h1>Which event should I inspect first?</h1>
-          <p>Ranked public conflict signals. Open the source, check the row, then choose Assign, Watch, or Dismiss.</p>
+          <div className="risk-kicker">Model-guided review</div>
+          <h1>Find the next public conflict signal worth checking.</h1>
+          <p>The model beat the baseline on the current source-checked answer key. A human still opens the source and makes the final call.</p>
         </div>
-        <div className="flow-strip" aria-label="Assignment workflow">
-          <span>1 Pick</span>
-          <span>2 Check source</span>
-          <span>3 Choose</span>
+        <div className="proof-strip" aria-label="Evaluation proof">
+          {PROOF_METRICS.map((metric) => (
+            <div className="proof-card" key={metric.label}>
+              <span>{metric.label}</span>
+              <strong>{metric.value}</strong>
+              <small>{metric.note}</small>
+            </div>
+          ))}
         </div>
       </div>
 
-      <QueueFilterBar
-        filters={filters}
-        onFilter={onFilter}
-        loading={loading || queueLoading}
-        resultCount={rankedEvents.length}
-        decisionCount={decisionCount}
-        onExport={exportDecisions}
-        queueMode={queueMode}
-        onQueueMode={setQueueMode}
-      />
+      {queueError && <div className="review-error">{queueError}</div>}
 
-      {queueError && (
-        <div className={`queue-strategy-strip${queueError ? " error" : ""}`}>
-          {queueError}
-        </div>
-      )}
-
-      <div className="queue-grid">
-        <div className="queue-list-panel">
-          <div className="risk-section-head">
-            <span>Top things to check</span>
+      <div className="review-layout">
+        <section className="review-list-panel" aria-label="Next events to review">
+          <div className="review-section-head">
+            <span>Next events to review</span>
             <span>{loading || queueLoading ? "loading" : `${rankedEvents.length} shown`}</span>
           </div>
-          <div className="queue-list">
+
+          <div className="review-list">
             {rankedEvents.length === 0 && (
-              <div className="queue-empty">
-                No assignment candidates match the current filters.
-              </div>
+              <div className="queue-empty">No review candidates match the current data window.</div>
             )}
             {rankedEvents.map((item, index) => {
               const rowDecision = decisionById[item.event.id];
@@ -2023,115 +1978,68 @@ function GlobalRiskQueue({ events, loading, selectedEvent, onFocusEvent, onOpenM
                 <button
                   type="button"
                   key={item.event.id}
-                  className={"queue-item" + (selected?.event.id === item.event.id ? " selected" : "")}
+                  className={"review-row" + (selected?.event.id === item.event.id ? " selected" : "")}
                   onClick={() => onFocusEvent(item.event)}
                 >
-                  <span className="queue-rank">#{item.rank ?? index + 1}</span>
-                  <span className="queue-main">
+                  <span className="review-rank">#{item.rank ?? index + 1}</span>
+                  <span className="review-row-main">
                     <strong>{simpleEventTitle(item.event)}</strong>
                     <em>{item.event.location || item.event.country} · {item.event.date}</em>
-                    <em>{item.surfaceExplanation?.label ?? "Needs source checking"}</em>
-                    {rowDecision && <em>Local decision: {rowDecision.decisionLabel}</em>}
+                    <small>{rowDecision ? `Marked ${rowDecision.decisionLabel}` : item.surfaceExplanation?.label ?? "Needs source checking"}</small>
                   </span>
                   <span className={`recommendation-pill ${item.recommendation}`}>
                     {RECOMMENDATION_META[item.recommendation].label}
                   </span>
-                  <span className="queue-scores">
+                  <span className="review-score">
                     <b>{item.priority}</b>
-                    <small>triage priority</small>
+                    <small>priority</small>
                   </span>
                 </button>
               );
             })}
           </div>
-        </div>
+        </section>
 
-        <aside className="brief-panel">
+        <aside className="review-decision-panel" aria-label="Selected event review">
           {selected ? (
             <>
-              <div className="brief-topline">
+              <div className="selected-event-head">
                 <div>
-                  <div className="risk-kicker">Selected signal</div>
+                  <div className="risk-kicker">Recommended: {RECOMMENDATION_META[selected.recommendation].label}</div>
                   <h2>{simpleEventTitle(selected.event)}</h2>
                   <p>{selected.event.location || selected.event.country} · {selected.event.date}</p>
                 </div>
-                <div className={`priority-badge recommendation-badge ${selected.recommendation}`}>
-                  <span>Suggested choice</span>
-                  <strong>{RECOMMENDATION_META[selected.recommendation].label}</strong>
-                  <small>{selected.priority}/100</small>
+                <div className={`decision-stamp ${selected.recommendation}`}>
+                  <span>{RECOMMENDATION_META[selected.recommendation].label}</span>
+                  <strong>{selected.priority}</strong>
                 </div>
               </div>
 
-              <p className="assignment-reco-copy">
-                {RECOMMENDATION_META[selected.recommendation].description} This is a helper guess, not verified truth.
-              </p>
-
-              <div className="active-learning-box">
-                <div className="brief-label">What the app thinks</div>
-                <strong>{selected.priority}/100 triage priority</strong>
-                <p>
-                  {selected.surfaceExplanation?.label ?? "This may be useful."} Higher scores mean "check sooner," not "definitely true."
-                </p>
-                <div className="component-row">
-                  <span>{selected.event.theme}</span>
-                  <span>{selected.uncertainty.level} uncertainty</span>
-                  <span>{selected.evidenceGrade} evidence</span>
-                </div>
-              </div>
-
-              <div className="assignment-summary">
+              <div className="review-metric-grid">
                 <div>
-                  <span>Evidence</span>
-                  <strong className={`evidence-grade ${selected.evidenceGrade}`}>{selected.evidenceGrade}</strong>
+                  <span>Triage priority</span>
+                  <strong>{selected.priority}/100</strong>
+                  <small>what to inspect first</small>
+                </div>
+                <div>
+                  <span>Model probability</span>
+                  <strong>{modelProbabilityPct(selected.event)}</strong>
+                  <small>UCDP organized-violence match</small>
+                </div>
+                <div>
+                  <span>Source</span>
+                  <strong>{sourceHost(selected.event.sourceUrl) || "unknown"}</strong>
+                  <small>{sourceTierLabel(sourceTierForUrl(selected.event.sourceUrl))}</small>
                 </div>
                 <div>
                   <span>Uncertainty</span>
                   <strong className={`uncertainty-${selected.uncertainty.level}`}>{selected.uncertainty.level}</strong>
-                </div>
-                <div>
-                  <span>Source</span>
-                  <strong>{sourceHost(selected.event.sourceUrl) || "none"}</strong>
-                </div>
-                <div>
-                  <span>Mentions</span>
-                  <strong>{Number(selected.event.numMentions ?? 0).toLocaleString()}</strong>
+                  <small>{selected.evidenceGrade} evidence</small>
                 </div>
               </div>
 
-              <div className="brief-section">
-                <div className="brief-label">Could affect</div>
-                <div className="channel-row">
-                  {selected.channels.map((channel) => <span key={channel}>{channel}</span>)}
-                </div>
-              </div>
-
-              <div className="brief-section">
-                <div className="brief-label">Why it is on the list</div>
-                <ul className="why-list">
-                  {selected.reasonCodes.slice(0, 4).map((reason) => <li key={reason}>{reason}</li>)}
-                </ul>
-              </div>
-
-              <div className="brief-section">
-                <div className="brief-label">Check before trusting</div>
-                {selected.uncertainty.warnings.length > 0 ? (
-                  <ul className="warning-list">
-                    {selected.uncertainty.warnings.slice(0, 3).map((warning) => <li key={warning}>{simpleWarningText(warning)}</li>)}
-                  </ul>
-                ) : (
-                  <p className="quiet-note">Open the source and check that the event, place, date, and actors match this row.</p>
-                )}
-              </div>
-
-              <div className="brief-facts">
-                <div><span>Topic</span><strong>{selected.event.theme}</strong></div>
-                <div><span>Goldstein</span><strong>{Number.isFinite(selected.event.goldstein) ? selected.event.goldstein.toFixed(1) : "n/a"}</strong></div>
-                <div><span>Tone</span><strong>{Number.isFinite(selected.event.avgTone) ? selected.event.avgTone.toFixed(2) : "n/a"}</strong></div>
-                <div><span>Mentions</span><strong>{Number(selected.event.numMentions ?? 0).toLocaleString()}</strong></div>
-              </div>
-
-              <div className="decision-box">
-                <div className="brief-label">Your choice</div>
+              <div className="decision-box minimal-decision-box">
+                <div className="brief-label">Human decision</div>
                 <div className="decision-row">
                   {DECISION_OPTIONS.map((option) => (
                     <button
@@ -2146,24 +2054,44 @@ function GlobalRiskQueue({ events, loading, selectedEvent, onFocusEvent, onOpenM
                 </div>
                 <p>
                   {selectedDecision
-                    ? `Marked as ${selectedDecision.decisionLabel} at ${new Date(selectedDecision.decidedAt).toLocaleString()}. This is saved only in your browser.`
-                    : "Choose after checking the source. This does not change the real eval labels."}
+                    ? `Saved locally as ${selectedDecision.decisionLabel}. This is still not source-checked ground truth.`
+                    : "Decide only after checking the source. This saves a prototype note in your browser."}
                 </p>
               </div>
 
-              <div className="brief-actions">
+              <div className="review-actions">
                 {selected.event.sourceUrl && (
                   <a href={selected.event.sourceUrl} target="_blank" rel="noopener noreferrer">
                     Open source <IconExternalLink />
                   </a>
                 )}
-                <button type="button" onClick={() => { onFocusEvent(selected.event); onOpenMap(); }}>
-                  Open on map
-                </button>
+                {decisionCount > 0 && (
+                  <button type="button" onClick={exportDecisions}>
+                    Download choices
+                  </button>
+                )}
+              </div>
+
+              <div className="review-block">
+                <div className="brief-label">Why this surfaced</div>
+                <ul className="why-list">
+                  {selected.reasonCodes.slice(0, 4).map((reason) => <li key={reason}>{reason}</li>)}
+                </ul>
+              </div>
+
+              <div className="review-block">
+                <div className="brief-label">Check before trusting</div>
+                {selected.uncertainty.warnings.length > 0 ? (
+                  <ul className="warning-list">
+                    {selected.uncertainty.warnings.slice(0, 3).map((warning) => <li key={warning}>{simpleWarningText(warning)}</li>)}
+                  </ul>
+                ) : (
+                  <p className="quiet-note">Open the source and verify the event, place, date, and actors before treating this as evidence.</p>
+                )}
               </div>
             </>
           ) : (
-            <div className="risk-empty">Loading the assignment queue.</div>
+            <div className="risk-empty">Loading the next event to review.</div>
           )}
         </aside>
       </div>
@@ -2206,11 +2134,6 @@ function ErrorToast({ message, onDismiss }) {
 // ── Root ──────────────────────────────────────────────────────────────────────
 
 function App() {
-  const [view,     setView]     = useState(() => {
-    if (window.location.hash === "#events") return "events";
-    if (window.location.hash === "#risk") return "risk";
-    return "queue";
-  });
   const [events,   setEvents]   = useState([]);
   const [filters,  setFilters]  = useState({ days: 7, continent: "All", category: "All", source: "static" });
   const [selected, setSelected] = useState(null);
@@ -2228,16 +2151,6 @@ function App() {
       .then((d) => setAiReady(d.ready || Boolean(apiKey)))
       .catch(() => setAiReady(Boolean(apiKey)));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    const syncHashView = () => {
-      if (window.location.hash === "#events") setView("events");
-      else if (window.location.hash === "#risk") setView("risk");
-      else setView("queue");
-    };
-    window.addEventListener("hashchange", syncHashView);
-    return () => window.removeEventListener("hashchange", syncHashView);
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -2280,16 +2193,6 @@ function App() {
       Number(b.numMentions ?? 0) - Number(a.numMentions ?? 0)
     ), [events, filters.continent, filters.category]);
 
-  const { globalHopeAverage, eventCount } = useMemo(() => {
-    const validEvents = filteredEvents.filter((event) => Number.isFinite(eventSignalScore(event)));
-    const sum = validEvents.reduce((acc, curr) => acc + eventSignalScore(curr), 0);
-    const avg = validEvents.length > 0 ? sum / validEvents.length : 50;
-    return {
-      globalHopeAverage: avg,
-      eventCount: filteredEvents.length,
-    };
-  }, [filteredEvents]);
-
   const handleSelectEvent = useCallback((ev) => {
     setSelected((prev) => (prev?.id === ev.id ? null : ev));
   }, []);
@@ -2303,77 +2206,25 @@ function App() {
     setSelected(null);
   }, []);
 
-  const handleViewChange = useCallback((nextView) => {
-    setView(nextView);
-    const hash = nextView === "events" ? "#events" : nextView === "risk" ? "#risk" : "#queue";
-    window.history.replaceState(null, "", hash);
-    setSelected(null);
-  }, []);
-
   return (
     <>
       <TopBar
-        globalHopeAverage={globalHopeAverage}
-        eventCount={eventCount}
-        activeView={view}
-        onViewChange={handleViewChange}
         dataSource={filters.source}
       />
 
       <main className="app-main">
-        {view === "queue" ? (
-          <GlobalRiskQueue
-            events={filteredEvents}
-            loading={loading}
-            selectedEvent={selected}
-            onFocusEvent={handleFocusEvent}
-            onOpenMap={() => {
-              setView("events");
-              window.history.replaceState(null, "", "#events");
-            }}
-            filters={filters}
-            onFilter={handleFilter}
-            apiKey={apiKey}
-            aiReady={aiReady}
-          />
-        ) : view === "events" ? (
-          <>
-            <MapView
-              events={filteredEvents}
-              selectedEvent={selected}
-              onSelectEvent={handleSelectEvent}
-            />
-            <FilterPanel
-              filters={filters}
-              onFilter={handleFilter}
-              filteredEvents={filteredEvents}
-              selectedEvent={selected}
-              onSelectEvent={handleSelectEvent}
-              loading={loading}
-            />
-            <MapLegend />
-            {selected && (
-              <EventDetail
-                event={selected}
-                events={events}
-                onClose={() => setSelected(null)}
-                onSelectEvent={handleSelectEvent}
-                apiKey={apiKey}
-                aiReady={aiReady}
-                dataSource={filters.source}
-              />
-            )}
-          </>
-        ) : (
-          <RiskWindowsView />
-        )}
+        <GlobalRiskQueue
+          events={filteredEvents}
+          loading={loading}
+          selectedEvent={selected}
+          onFocusEvent={handleFocusEvent}
+          onOpenMap={() => {}}
+          filters={filters}
+          onFilter={handleFilter}
+          apiKey={apiKey}
+          aiReady={aiReady}
+        />
       </main>
-
-      <footer className="app-footer">
-        <a href={GITHUB_URL + "#ai-analysis"} target="_blank" rel="noopener noreferrer">
-          AI analysis — setup guide →
-        </a>
-      </footer>
 
       {loading && <LoadingOverlay slow={slowLoad} />}
       {error    && <ErrorToast message={error} onDismiss={() => setError("")} />}
