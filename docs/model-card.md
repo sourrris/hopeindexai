@@ -3,14 +3,16 @@
 ## Model identifier
 
 - **Name:** HopeIndexAI escalation supervised model
-- **Version:** `escalation-gbdt-full-v3`
+- **Version:** `escalation-gbdt-full-v4`
 - **Target:** `ucdp_organized_violence_match`
-- **Artifact:** `public/data/models/escalation-model-champion.json` (versioned source: `public/data/models/escalation-model-v3.json`)
+- **Artifact:** `public/data/models/escalation-model-champion.json` (versioned source: `public/data/models/escalation-model-v4.json`)
 - **Type:** Gradient-boosted shallow trees with a logistic linear base (pure TypeScript/Bun implementation; no native LightGBM/XGBoost addon required)
 
 ## Intended use
 
-This model is a triage aid for OSINT watch analysts. It estimates the probability that a noisy public GDELT event row corresponds to a verified lethal organized-violence incident recorded by UCDP (≥5 deaths). It is meant to help humans prioritize which event rows deserve source-checked review, not to predict the future or replace human judgment.
+HopeIndexAI is a human-in-the-loop triage system for noisy public conflict signals.
+
+This model is a triage aid for OSINT watch analysts. It estimates the probability that a noisy public GDELT event row corresponds to a verified lethal organized-violence incident recorded by UCDP (>=5 deaths). It is meant to help humans prioritize which event rows deserve source-checked review, not to predict the future or replace human judgment.
 
 Appropriate use:
 - Ranking recent public conflict signals for analyst review.
@@ -18,7 +20,7 @@ Appropriate use:
 - Supporting the "Assign / Watch / Dismiss" triage workflow.
 
 Inappropriate use:
-- General geopolitical forecasting (elections, markets, diplomacy outcomes).
+- Broad geopolitical prediction (elections, markets, diplomacy outcomes).
 - Sole basis for policy, legal, or safety-critical decisions without source verification.
 - Predicting non-violent events (humanitarian, economic, environmental).
 
@@ -30,6 +32,12 @@ Inappropriate use:
 - **Positive definition:** An event matches a UCDP organized-violence incident with `deaths.best >= 5` OR is human-labeled `important=true`.
 - **Features:** 40 features including Goldstein scale, tone, mentions, source tier, temporal/geographic context, actor overlap, and duplicate cluster size.
 
+## Training run
+
+- **Command:** `bun run labels:build && bun run train:full`
+- **Seed:** `20260620`
+- **Reproducibility:** Mini-batch shuffling and AUC downsampling use the fixed seed, so the same inputs should produce stable model metrics.
+
 ## Performance
 
 Metrics are reported on internal temporal splits and on the source-checked human Phase 1 eval set. They should be treated as provisional until validated on a future holdout with verified outcomes.
@@ -38,23 +46,23 @@ Metrics are reported on internal temporal splits and on the source-checked human
 
 | Split | AUC | F1 | Precision | Recall |
 |-------|-----|----|-----------|--------|
-| Train | 0.997 | 0.667 | 0.500 | 1.000 |
-| Validation | 0.809 | 0.571 | 0.500 | 0.667 |
-| Test | 0.904 | 0.444 | 0.400 | 0.500 |
+| Train | 0.997 | 0.593 | 0.421 | 1.000 |
+| Validation | 0.797 | 0.444 | 0.333 | 0.667 |
+| Test | 0.905 | 0.400 | 0.333 | 0.500 |
 
 ### Source-checked human Phase 1 eval
 
 | System | F1 | Precision | Recall |
 |--------|----|-----------|--------|
 | Baseline (surface score) | 0.353 | 0.214 | 1.000 |
-| Candidate model | 0.766 | 0.692 | 0.857 |
+| Candidate model | 0.750 | 0.667 | 0.857 |
 | Surface policy (combined) | 0.639 | 0.719 | 0.575 |
 
-The candidate model currently beats the simple baseline on the source-checked eval set. The surface policy remains the strongest combined signal.
+The candidate model currently beats the simple baseline on the source-checked eval set. The surface policy remains the product triage ranking, while the model probability is the narrower UCDP organized-violence match estimate.
 
 ### Future holdout
 
-A future holdout validation pipeline exists (`bun run eval:future-holdout`), but the current UCDP Candidate release does not yet cover the most recent holdout window, so holdout AUC is not yet computable. The holdout gate activates automatically when verified positives are available.
+A future holdout validation pipeline exists (`bun run eval:future-holdout`), but the current report has zero verified positives, so holdout AUC is not yet computable. The holdout gate activates automatically when verified positives are available.
 
 ## Known limitations and biases
 

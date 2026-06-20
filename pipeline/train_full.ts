@@ -24,6 +24,7 @@ const GBDT_L2 = 1.0;
 const GBDT_MAX_BINS = 24;
 const GBDT_MAX_LEAF_VALUE = 5;
 const QUALITY_GATE = { auc: 0.80, f1: 0.35 };
+const TRAINING_SEED = 20260620;
 
 type LearnerKind = "gbdt" | "logreg";
 
@@ -273,10 +274,18 @@ function standardize(rows: TrainingRow[], trainRows: TrainingRow[]) {
   return { means, stds };
 }
 
-function shuffle<T>(arr: T[]): T[] {
+function createSeededRandom(seed: number): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state = (state * 1664525 + 1013904223) >>> 0;
+    return state / 0x100000000;
+  };
+}
+
+function shuffle<T>(arr: T[], random: () => number): T[] {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = Math.floor(random() * (i + 1));
     [a[i], a[j]] = [a[j], a[i]];
   }
   return a;
@@ -290,9 +299,10 @@ function trainMiniBatch(rows: TrainingRow[], epochs: number, lr: number, l2: num
 
   const weights = Array(FEATURE_NAMES.length).fill(0);
   let bias = Math.log((positive + 1) / (negative + 1));
+  const random = createSeededRandom(TRAINING_SEED);
 
   for (let epoch = 0; epoch < epochs; epoch++) {
-    const shuffled = shuffle(rows);
+    const shuffled = shuffle(rows, random);
     for (let i = 0; i < shuffled.length; i += batchSize) {
       const batch = shuffled.slice(i, i + batchSize);
       const grads = Array(FEATURE_NAMES.length).fill(0);
@@ -547,8 +557,9 @@ function metrics(rows: TrainingRow[], predict: (features: number[]) => number, t
   let posProbs = probs.filter((_, i) => actuals[i] === 1);
   let negProbs = probs.filter((_, i) => actuals[i] === 0);
   const MAX_AUC_SAMPLES = 5_000;
-  if (posProbs.length > MAX_AUC_SAMPLES) posProbs = shuffle(posProbs).slice(0, MAX_AUC_SAMPLES);
-  if (negProbs.length > MAX_AUC_SAMPLES) negProbs = shuffle(negProbs).slice(0, MAX_AUC_SAMPLES);
+  const random = createSeededRandom(TRAINING_SEED + rows.length);
+  if (posProbs.length > MAX_AUC_SAMPLES) posProbs = shuffle(posProbs, random).slice(0, MAX_AUC_SAMPLES);
+  if (negProbs.length > MAX_AUC_SAMPLES) negProbs = shuffle(negProbs, random).slice(0, MAX_AUC_SAMPLES);
   let concordant = 0, ties = 0;
   for (const pp of posProbs) {
     for (const np of negProbs) {
@@ -722,6 +733,11 @@ async function main() {
       trainSamples: trainRows.length,
       valSamples: valRows.length,
       testSamples: testRows.length,
+    },
+    training: {
+      seed: TRAINING_SEED,
+      learner,
+      command: "bun run labels:build && bun run train:full",
     },
     featureNames: FEATURE_NAMES,
     preprocessing: { means: means.map(round), stds: stds.map(round) },

@@ -6,7 +6,7 @@ Keep it simple: the phase doc should answer what we are doing now, what comes ne
 
 ## Current Rule
 
-HopeIndexAI is a triage prototype, not a verified forecasting system.
+HopeIndexAI is a human-in-the-loop triage system for noisy public conflict signals.
 
 In simple ML terms: the model is the student, and source-checked human labels are the answer key. LLM/Codex labels are useful practice notes, but only source-checked human-reviewed labels can prove improvement.
 
@@ -18,7 +18,7 @@ The V1 target user is an OSINT watch analyst. The main product decision is wheth
 | --- | --- | --- | --- |
 | 0 | Baseline audit | Done | App and data shape are documented |
 | 1 | Measured MVP | Active | `bun run test:all` passes |
-| 2 | Training-grade records | Active | Validated records, external evidence status, plus 100 source-checked human labels |
+| 2 | Training-grade records | Active | Validated records, external evidence status, plus 101 source-checked human labels |
 | 3 | Storage and ingestion | Planned | Public data becomes an export |
 | 4 | Entity resolution | Backlog | Messy actors map to stable IDs |
 | 5 | Source and claim quality | Backlog | Important claims have evidence |
@@ -83,17 +83,19 @@ Current evidence:
 ```text
 Events: 1,500
 Labels: 120
-Source-checked human labels: 4
-LLM/Codex-reviewed labels: 116
-Source-checked human labels needed for improvement claim: 100
+Source-checked human labels: 101
+LLM-reviewed labels: 19
+Source-checked positives: 21
+Source-checked negatives: 80
+Future holdout: zero verified positives, so AUC is not computable
 ```
 
 Done means:
 
 - `bun run test:all` passes.
-- The eval report says whether improvement can or cannot be claimed.
+- The eval report says the candidate beats the baseline on the current source-checked Phase 1 labels.
 - No non-human label is marked `humanReviewed: true`.
-- Improvement claims require at least 100 source-checked human labels with `reviewContext.sourceChecked: true`.
+- Improvement claims must stay scoped to the current source-checked Phase 1 answer key.
 - Local browser assignment notes are not source-checked ground truth and do not update eval labels.
 - Reviewer Copilot and LLM review notes are analyst assistance only; they do not mark labels as source-checked.
 - Active learning recommends the next rows to source-check; it never creates human labels by itself.
@@ -128,7 +130,7 @@ Step-by-step:
 5. Review 20 to 30 more labels by hand after opening the source URL or enough source context.
 6. Use `bun run labels:queue` and the active-learning queue modes to balance high priority, uncertainty, and coverage gaps.
 7. Rebuild records and rerun eval.
-8. Repeat until 100 source-checked human labels exist.
+8. Grow toward 300-500 source-checked labels across priority, uncertainty, coverage gaps, false positives, and false negatives.
 
 Commands:
 
@@ -153,7 +155,7 @@ Done means:
 - `data/training/phase2_records.jsonl` exists and validates.
 - `data/labeling/reviewer_queue.jsonl` exists and ranks non-source-checked review candidates.
 - `data/external/matches/phase2_ucdp_matches.jsonl` records UCDP match status where the local UCDP import exists.
-- At least 100 labels have `labelSource: "human"`, `humanReviewed: true`, and `reviewContext.sourceChecked: true`.
+- At least 101 labels have `labelSource: "human"`, `humanReviewed: true`, and `reviewContext.sourceChecked: true`.
 - The reviewer actually checked the event/source context.
 - Weak future-window targets are not treated as final evaluation truth.
 - External evidence is not treated as final importance truth.

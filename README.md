@@ -2,13 +2,16 @@
 
 AI-assisted triage for public conflict signals.
 
-HopeIndexAI helps OSINT watch analysts rank noisy public event rows and decide which few deserve deeper investigation. It is deliberately scoped to **conflict and lethal-violence risk signals** (UCDP-organized-violence patterns), not general geopolitical forecasting. It keeps model output separate from source-checked human ground truth.
+HopeIndexAI is a human-in-the-loop triage system for noisy public conflict signals.
+
+It helps OSINT watch analysts rank noisy public event rows and decide which few deserve deeper investigation. It is deliberately scoped to **conflict and lethal-violence risk signals** (UCDP-organized-violence patterns), not broad world prediction. It keeps model output separate from source-checked human ground truth.
 
 In simple ML terms: the model is the student, and source-checked human labels are the answer key.
 
 ## Docs
 
 - [docs/PHASES.md](./docs/PHASES.md) - step-by-step build plan and phase status.
+- [docs/PRODUCT_READINESS_PLAN.md](./docs/PRODUCT_READINESS_PLAN.md) - remaining product phases, MVP scope, and UI simplification plan.
 - [docs/IDEA.md](./docs/IDEA.md) - bigger product idea and reasoning frame.
 - [docs/TRAINING_RECORDS.md](./docs/TRAINING_RECORDS.md) - training-grade record format and guardrails.
 - [docs/EXTERNAL_EVIDENCE.md](./docs/EXTERNAL_EVIDENCE.md) - UCDP import, matching, and external-evidence guardrails.
@@ -70,10 +73,10 @@ bun run eval:phase1
 
 - 1,500 public event rows.
 - 120 reviewed labels.
-- 116 LLM/Codex-reviewed labels.
+- 19 LLM-reviewed labels.
 - 101 source-checked human labels.
 - Model retrained on the 101 source-checked labels; candidate now beats the baseline on the source-checked eval set.
-- Positioned as a conflict/death-risk triage assistant, not a general forecasting system.
+- Positioned as a conflict/death-risk triage assistant, not a broad world-prediction tool.
 
 The current metrics are useful for product triage, but they are not final proof. LLM-reviewed labels are like practice notes; source-checked human labels are the answer key.
 

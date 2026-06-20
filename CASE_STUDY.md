@@ -2,7 +2,9 @@
 
 ## Human-in-the-loop OSINT assignment triage
 
-HopeIndexAI is an intelligence triage prototype for noisy public event data. It ingests a small GDELT-style event slice, ranks which public signals deserve deeper investigation, and keeps model output separate from source-checked human ground truth.
+HopeIndexAI is a human-in-the-loop triage system for noisy public conflict signals.
+
+It ingests a small GDELT-style event slice, ranks which public signals deserve deeper investigation, and keeps model output separate from source-checked human ground truth.
 
 For the step-by-step build plan, see [docs/PHASES.md](./docs/PHASES.md). For the bigger product idea, see [docs/IDEA.md](./docs/IDEA.md).
 
@@ -27,7 +29,7 @@ The target user is an OSINT watch analyst who needs a fast first pass over publi
 5. Mark a local prototype decision: `Assign`, `Watch`, or `Dismiss`.
 6. Separately mark source-checked labels during review so the ranking system can be evaluated later.
 
-In simple ML terms, the model is the student and the labels are the answer key. HopeIndexAI does not let model-reviewed labels count as final proof. The Phase 1 report refuses to claim improvement until at least 100 source-checked human labels exist.
+In simple ML terms, the model is the student and the labels are the answer key. HopeIndexAI does not let model-reviewed labels count as final proof. The Phase 1 report now has 101 source-checked human labels, so it can compare the candidate against the baseline on that answer key.
 
 ## Architecture
 
@@ -46,7 +48,7 @@ data/eval/phase1_labels.jsonl
 -> report with proof/no-proof verdict
 
 public/data/escalation-model.json
--> model probability
+-> UCDP organized-violence match probability
 -> surfacing calibration
 -> surfaceScore, surfaceBand, surfaceReasons
 
@@ -76,11 +78,13 @@ Current Phase 1 report:
 
 - 1,500 public events.
 - 120 reviewed labels.
-- 116 LLM/Codex-reviewed labels.
-- 4 source-checked human labels.
-- Improvement claim blocked until 100 source-checked human labels exist.
+- 19 LLM-reviewed labels.
+- 101 source-checked human labels.
+- 21 positive and 80 negative source-checked human labels.
+- Candidate model beats the baseline on the source-checked Phase 1 eval set.
+- Future-holdout AUC is not yet computable because the current holdout has zero verified positives.
 
-That is an important engineering choice. It prevents the project from claiming scientific progress from weak evidence.
+That is an important engineering choice. It makes the claim narrower: the candidate improved on the current source-checked Phase 1 answer key, while future performance is still unproven.
 
 ## What worked
 
@@ -127,19 +131,19 @@ The V1 UI makes the assignment decision explicit. Local browser decisions are ex
 ## Current limitations
 
 - The event dataset is a static 1,500-row public slice.
-- The label set has only 4 source-checked human-reviewed rows so far.
+- The label set has 101 source-checked human-reviewed rows, which is enough for a first measured comparison but still small for a rare-event ML task.
 - The first external dataset, UCDP GED 26.1, is historical and ends before the current demo slice.
 - GDELT country codes are FIPS-like, not ISO, so geography requires explicit mapping.
 - Actor resolution is still weak; examples like `ISRAEL`, `ISRAELI`, and `GOVERNMENT` are not merged into canonical actors.
 - The frontend is still prototype-style React from CDN with runtime Babel.
-- The project is not a verified forecasting system. It is a triage and evaluation workflow.
+- The project is a triage and evaluation workflow, not proof that future events can be predicted.
 
 ## Next engineering steps
 
 1. Keep `data/training/phase2_records.jsonl` generated and validated.
-2. Review the next 30 labels by hand after opening the source URL or enough source context.
+2. Grow the label set toward 300-500 source-checked rows after opening the source URL or enough source context.
 3. Rerun `bun run records:build`, `bun run records:validate`, and `bun run eval:phase1`.
-4. Repeat until 100 source-checked human labels exist.
+4. Rerun `bun run eval:future-holdout` when the holdout has verified positives.
 5. Move storage and ingestion work into Phase 3 after the record loop is working.
 
 ## Interview narrative
@@ -150,4 +154,4 @@ The concise story:
 
 The tradeoff:
 
-> I kept the app simple enough to ship, then added measurement before scaling. That means the current system is honest but incomplete: it can triage events and report provisional metrics, but it cannot claim final ML improvement until humans source-check the answer key.
+> I kept the app simple enough to ship, then added measurement before scaling. That means the current system is honest but incomplete: it can triage events and report measured Phase 1 metrics, but it still needs a future holdout with verified positives before I trust the model on new data.

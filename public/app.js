@@ -39,15 +39,15 @@ const ASSIGNMENT_THRESHOLDS = {
 };
 
 const RECOMMENDATION_META = {
-  assign: { label: "Important", description: "Ask a person to check this source carefully." },
+  assign: { label: "Assign", description: "Ask a person to check this source carefully." },
   watch: { label: "Watch", description: "Keep an eye on this until more evidence arrives." },
-  dismiss: { label: "Ignore", description: "Treat this as weak or background noise for now." },
+  dismiss: { label: "Dismiss", description: "Treat this as weak or background noise for now." },
 };
 
 const DECISION_OPTIONS = [
-  { value: "assign", label: "Important" },
+  { value: "assign", label: "Assign" },
   { value: "watch", label: "Watch" },
-  { value: "dismiss", label: "Ignore" },
+  { value: "dismiss", label: "Dismiss" },
 ];
 
 const QUEUE_MODES = [
@@ -998,7 +998,7 @@ function AiAnalysis({ event, apiKey }) {
         )}
       </div>
       <div className="ai-scope-note" style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 10, lineHeight: 1.4 }}>
-        Model scope: estimates the likelihood that this event corresponds to a verified lethal organized-violence incident (UCDP, ≥5 deaths). Not a general importance score.
+        Model scope: estimates the likelihood that this event corresponds to a verified lethal organized-violence incident (UCDP, >=5 deaths). Not a general triage-priority score.
       </div>
       {loading && (
         <div className="ai-thinking">
@@ -1143,7 +1143,7 @@ function IntelPacket({ event, dataSource }) {
             </div>
           </div>
           <div className="model-scope-note" style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 8, lineHeight: 1.4 }}>
-            This model estimates the likelihood that the event corresponds to a verified lethal organized-violence incident (UCDP, ≥5 deaths). It is not a general importance score.
+            This model estimates the likelihood that the event corresponds to a verified lethal organized-violence incident (UCDP, >=5 deaths). It is not the same as triage priority.
           </div>
           <div className="model-driver-list">
             {(prediction.drivers || []).slice(0, 4).map((driver) => (
@@ -1798,7 +1798,7 @@ function ReviewerCopilotPanel({ event, apiKey, aiReady }) {
         <div>
           <span>Surface</span>
           <strong>{surfaceExplanation.label}</strong>
-          <small>{surfaceExplanation.score}/100 model priority</small>
+          <small>{surfaceExplanation.score}/100 triage priority</small>
         </div>
         <div>
           <span>Uncertainty</span>
@@ -1977,9 +1977,9 @@ function GlobalRiskQueue({ events, loading, selectedEvent, onFocusEvent, onOpenM
     <section className="queue-view" aria-label="Assignment queue">
       <div className="queue-hero">
         <div>
-          <div className="risk-kicker">Simple review workflow</div>
-          <h1>Pick a news signal to check</h1>
-          <p>The app sorts noisy public news rows. Your job is simple: read one, open the source, then choose Important, Watch, or Ignore.</p>
+          <div className="risk-kicker">Review queue</div>
+          <h1>Which event should I inspect first?</h1>
+          <p>Ranked public conflict signals. Open the source, check the row, then choose Assign, Watch, or Dismiss.</p>
         </div>
         <div className="flow-strip" aria-label="Assignment workflow">
           <span>1 Pick</span>
@@ -2038,7 +2038,7 @@ function GlobalRiskQueue({ events, loading, selectedEvent, onFocusEvent, onOpenM
                   </span>
                   <span className="queue-scores">
                     <b>{item.priority}</b>
-                    <small>signal score</small>
+                    <small>triage priority</small>
                   </span>
                 </button>
               );
@@ -2068,7 +2068,7 @@ function GlobalRiskQueue({ events, loading, selectedEvent, onFocusEvent, onOpenM
 
               <div className="active-learning-box">
                 <div className="brief-label">What the app thinks</div>
-                <strong>{selected.priority}/100 signal score</strong>
+                <strong>{selected.priority}/100 triage priority</strong>
                 <p>
                   {selected.surfaceExplanation?.label ?? "This may be useful."} Higher scores mean "check sooner," not "definitely true."
                 </p>

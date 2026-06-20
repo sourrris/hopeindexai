@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-17T17:45:54.132Z",
+  "generatedAt": "2026-06-20T13:57:12.403Z",
   "phase": "phase1_measured_mvp",
   "paths": {
     "events": "public/data/events.json",
@@ -24,7 +24,7 @@
   },
   "definitions": {
     "baseline": "v0 current surfacing heuristic: Goldstein strength, media mentions, severity, and marker radius.",
-    "candidate": "v1 stored escalation model: escalation-gbdt-full-v3",
+    "candidate": "v1 stored escalation model: escalation-gbdt-full-v4",
     "importantLabel": "Human answer to: should this event be surfaced as important in the app?",
     "warning": "LLM-reviewed and bootstrap labels are useful for triage, but only source-checked human labels can prove that the model improved."
   },
@@ -196,7 +196,7 @@
     "topFalseNegatives": []
   },
   "candidate": {
-    "name": "escalation-gbdt-full-v3",
+    "name": "escalation-gbdt-full-v4",
     "target": {
       "name": "ucdp_organized_violence_match",
       "definition": "1 when the GDELT event matches a lethal UCDP organized-violence event within +/-3 days and 300 km, or is human-labeled important.",
@@ -204,25 +204,25 @@
       "labelSource": "UCDP GED + Candidate + source-checked Phase 1 human labels."
     },
     "modelWeakLabelSource": "UCDP GED + Candidate + source-checked Phase 1 human labels.",
-    "threshold": 0.69,
+    "threshold": 0.56,
     "metrics": {
       "samples": 101,
       "positives": 21,
       "negatives": 80,
-      "predictedPositive": 26,
+      "predictedPositive": 27,
       "baseRate": 0.2079,
-      "accuracy": 0.8911,
-      "balancedAccuracy": 0.8786,
-      "precision": 0.6923,
+      "accuracy": 0.8812,
+      "balancedAccuracy": 0.8723,
+      "precision": 0.6667,
       "recall": 0.8571,
-      "specificity": 0.9,
-      "f1": 0.766,
-      "falseAlarmRate": 0.3077,
+      "specificity": 0.8875,
+      "f1": 0.75,
+      "falseAlarmRate": 0.3333,
       "missRate": 0.1429,
       "confusion": {
         "tp": 18,
-        "fp": 8,
-        "tn": 72,
+        "fp": 9,
+        "tn": 71,
         "fn": 3
       }
     },
@@ -231,17 +231,17 @@
       "positives": 4,
       "negatives": 221,
       "baseRate": 0.017777777777777778,
-      "threshold": 0.6900000000000004,
-      "accuracy": 0.9777777777777777,
-      "precision": 0.4,
+      "threshold": 0.5600000000000003,
+      "accuracy": 0.9733333333333334,
+      "precision": 0.3333333333333333,
       "recall": 0.5,
-      "specificity": 0.9864253393665159,
-      "f1": 0.4444444444444445,
-      "auc": 0.9038461538461539,
+      "specificity": 0.9819004524886877,
+      "f1": 0.4,
+      "auc": 0.9049773755656109,
       "confusion": {
         "tp": 2,
-        "fp": 3,
-        "tn": 218,
+        "fp": 4,
+        "tn": 217,
         "fn": 2
       }
     },
@@ -256,7 +256,7 @@
         "severity": "critical",
         "goldstein": -10,
         "numMentions": 40,
-        "score": 0.9964,
+        "score": 0.9959,
         "sourceUrl": "https://www.globalsecurity.org/wmd/library/news/india/2026/india-260529-india-meab01.htm",
         "labelImportant": false
       },
@@ -270,7 +270,7 @@
         "severity": "critical",
         "goldstein": -10,
         "numMentions": 28,
-        "score": 0.9894,
+        "score": 0.9899,
         "sourceUrl": "http://www.caribbeanherald.com/news/279073737/the-role-of-the-neo-authoritarian-bloc-in-modern-conflicts",
         "labelImportant": false
       },
@@ -284,22 +284,8 @@
         "severity": "critical",
         "goldstein": -10,
         "numMentions": 26,
-        "score": 0.9816,
+        "score": 0.9804,
         "sourceUrl": "https://www.wpbf.com/article/lawyer-arrested-seminole-county-murder-for-hire-plot/71395491",
-        "labelImportant": false
-      },
-      {
-        "id": "1306132828",
-        "date": "2026-05-27",
-        "title": "GAZA -> JOURNALIST",
-        "country": "IS",
-        "continent": "Middle East",
-        "theme": "Conflict",
-        "severity": "critical",
-        "goldstein": -10,
-        "numMentions": 33,
-        "score": 0.9645,
-        "sourceUrl": "https://freebeacon.com/media/committee-to-protect-journalists-key-source-for-kristofs-rape-claims-has-board-stacked-with-anti-israel-figures-who-accused-israel-of-apocalyptic-destruction-genocide-apartheid/",
         "labelImportant": false
       },
       {
@@ -312,8 +298,22 @@
         "severity": "critical",
         "goldstein": -10,
         "numMentions": 27,
-        "score": 0.9636,
+        "score": 0.9662,
         "sourceUrl": "https://sofiaglobe.com/2026/05/25/eurostat-price-of-fuel-in-bulgaria-in-april-2026-was-up-27-8-y-y/",
+        "labelImportant": false
+      },
+      {
+        "id": "1306132828",
+        "date": "2026-05-27",
+        "title": "GAZA -> JOURNALIST",
+        "country": "IS",
+        "continent": "Middle East",
+        "theme": "Conflict",
+        "severity": "critical",
+        "goldstein": -10,
+        "numMentions": 33,
+        "score": 0.9654,
+        "sourceUrl": "https://freebeacon.com/media/committee-to-protect-journalists-key-source-for-kristofs-rape-claims-has-board-stacked-with-anti-israel-figures-who-accused-israel-of-apocalyptic-destruction-genocide-apartheid/",
         "labelImportant": false
       },
       {
@@ -326,7 +326,7 @@
         "severity": "critical",
         "goldstein": -10,
         "numMentions": 32,
-        "score": 0.9418,
+        "score": 0.9331,
         "sourceUrl": "https://promptnewsonline.com/mother-daughter-arrested-over-alleged-n18m-online-romance-scam/",
         "labelImportant": false
       },
@@ -340,7 +340,7 @@
         "severity": "critical",
         "goldstein": -10,
         "numMentions": 30,
-        "score": 0.8623,
+        "score": 0.866,
         "sourceUrl": "https://www.9news.com/article/news/crime/mountain-view-brent-metz-trial/73-514cdd08-48bb-478d-be41-3ef791fa197c",
         "labelImportant": false
       },
@@ -354,8 +354,22 @@
         "severity": "critical",
         "goldstein": -10,
         "numMentions": 34,
-        "score": 0.7248,
+        "score": 0.6925,
         "sourceUrl": "https://www.mandurahmail.com.au/story/9252792/reward-for-information-on-brutal-double-murder-of-women/",
+        "labelImportant": false
+      },
+      {
+        "id": "1306734800",
+        "date": "2026-05-31",
+        "title": "ISRAELI -> FIGHTER",
+        "country": "IS",
+        "continent": "Middle East",
+        "theme": "Conflict",
+        "severity": "critical",
+        "goldstein": -10,
+        "numMentions": 24,
+        "score": 0.6759,
+        "sourceUrl": "https://www.albawaba.com/news/thousands-join-anti-netanyahu-protesters-1628778",
         "labelImportant": false
       }
     ],
@@ -384,7 +398,7 @@
         "severity": "critical",
         "goldstein": -10,
         "numMentions": 5,
-        "score": 0.0054,
+        "score": 0.0059,
         "sourceUrl": "https://www.premiumtimesng.com/news/top-news/884071-nigerian-troops-ambush-terrorists-kill-one-official.html",
         "labelImportant": true
       },
@@ -398,7 +412,7 @@
         "severity": "critical",
         "goldstein": -10,
         "numMentions": 24,
-        "score": 0.4077,
+        "score": 0.3511,
         "sourceUrl": "https://www.wandtv.com/news/national/russian-drone-targeting-ukraine-hits-apartment-building-in-romania-injuring-2-officials-say/article_e76bee21-c190-5c96-a2a1-1a672bcd5c3e.html",
         "labelImportant": true
       }
@@ -415,8 +429,8 @@
   "verdict": {
     "status": "candidate_beats_baseline",
     "canClaimImprovement": true,
-    "f1Gain": 0.4131,
-    "falseAlarmChange": -0.478,
+    "f1Gain": 0.3971,
+    "falseAlarmChange": -0.4524,
     "text": "Candidate beats the baseline on source-checked human Phase 1 labels. It is reasonable to say the measured model improved on this eval set."
   }
 }

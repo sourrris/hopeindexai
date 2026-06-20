@@ -16,7 +16,7 @@
     "train:full": "bun pipeline/train_full.ts",
     "labels:queue": "bun scripts/build_labeling_queue.ts",
     "labels:build": "bun scripts/build_supervised_labels.ts",
-    "ci": "bun run test:all && bun run pipeline:validate",
+    "ci": "bun run typecheck && bun test && bun run test:smoke && bun run records:validate && bun run pipeline:validate",
     "deploy:check": "bun run ci && bun scripts/pre_deploy_check.ts",
     "ml:autonomous": "bun scripts/orchestrate_autonomous_pipeline.ts",
     "ml:rollback": "bun scripts/rollback_model.ts",
