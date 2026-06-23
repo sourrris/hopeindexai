@@ -8,53 +8,12 @@
   "scripts": {
     "dev": "bun --watch server.ts",
     "start": "bun server.ts",
-    "sync": "bun scripts/sync.ts",
-    "enrich": "bun pipeline/enrich.ts",
-    "enrich:historical": "bun pipeline/enrich_historical.ts",
-    "train": "bun pipeline/train.ts",
-    "train:supervised": "bun pipeline/train_supervised.ts",
-    "train:full": "bun pipeline/train_full.ts",
-    "labels:queue": "bun scripts/build_labeling_queue.ts",
-    "labels:build": "bun scripts/build_supervised_labels.ts",
-    "ci": "bun run typecheck && bun test && bun run test:smoke && bun run records:validate && bun run pipeline:validate",
-    "deploy:check": "bun run ci && bun scripts/pre_deploy_check.ts",
-    "ml:autonomous": "bun scripts/orchestrate_autonomous_pipeline.ts",
-    "ml:rollback": "bun scripts/rollback_model.ts",
-    "ml:retrain-feedback": "bun scripts/retrain_from_feedback.ts",
-    "surface:phase1": "bun scripts/calibrate_phase1_surface.ts",
-    "review:phase1:codex": "bun scripts/apply_phase1_codex_review.ts",
-    "review:phase1:codex-source": "bun scripts/apply_phase1_codex_source_reviews.ts",
-    "review:phase1:human": "bun scripts/review_phase1_human.ts",
-    "review:phase1:llm": "bun scripts/review_phase1_with_llm.ts",
-    "records:build": "bun scripts/build_training_records.ts",
-    "records:validate": "bun scripts/validate_training_records.ts",
-    "risk:windows": "bun scripts/build_risk_windows.ts",
-    "risk:train": "bun scripts/train_risk_window_model.ts",
-    "risk:baseline": "bun scripts/init_risk_baseline_champion.ts",
-    "risk:research": "bun scripts/run_risk_research.ts",
-    "import:ucdp": "bun scripts/import_ucdp_ged.ts",
-    "import:ucdp-candidate": "bun scripts/import_ucdp_candidate.ts",
-    "import:acled": "bun scripts/import_acled.ts",
-    "import:aceld": "bun scripts/import_aceld_aggregates.ts",
-    "match:external": "bun scripts/match_external_events.ts",
-    "match:ucdp-candidate": "bun scripts/match_ucdp_candidate_events.ts",
-    "eval:phase1": "bun scripts/eval_phase1.ts",
-    "eval:future-holdout": "bun scripts/validate_future_holdout.ts",
-    "monitor": "bun scripts/monitor_pipeline.ts",
-    "ontology:validate": "bun scripts/validate_ontology_phase1.ts",
-    "pipeline:validate": "bun scripts/validate_pipeline.ts",
-    "typecheck": "tsc --noEmit",
-    "test:smoke": "bun scripts/smoke_api.ts",
-    "test:all": "bun run typecheck && bun run test:smoke && bun run ontology:validate && bun run eval:phase1",
-    "serve:vercel": "bun test-handler.mjs"
+    "test:vercel": "bun test-handler.mjs"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.104.1",
     "hono": "^4"
   },
   "devDependencies": {
-    "@types/bun": "latest",
-    "playwright": "^1.60.0",
-    "typescript": "^5.9.3"
+    "@types/bun": "latest"
   }
 }

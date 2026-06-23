@@ -3,11 +3,9 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "lib": ["ES2022", "DOM"],
-    "types": ["bun"],
+    "lib": ["ES2022"],
     "strict": false,
     "skipLibCheck": true,
-    "esModuleInterop": true,
-    "allowImportingTsExtensions": true
+    "esModuleInterop": true
   }
 }

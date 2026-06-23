@@ -1,10 +1,9 @@
 /**
- * Local manual server that replicates Vercel's Node.js runtime behaviour.
+ * Local test server that replicates Vercel's Node.js runtime behaviour.
  * Calls api/index.ts handler and passes (IncomingMessage, ServerResponse).
  *
- * Usage:  bun run serve:vercel
- *
- * For an exiting review check, use: bun run test:smoke
+ * Usage:  bun test-handler.mjs        ← preferred (Bun handles .ts imports)
+ *   OR:   bun run test:vercel         ← via package.json script
  */
 import { createServer } from "node:http";
 import { fileURLToPath } from "node:url";

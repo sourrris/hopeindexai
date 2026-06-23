@@ -1,2 +1,0 @@
-{"generatedAt":"2026-06-14T09:13:29.785Z","eventCount":2000,"positives":0,"negatives":2000,"auc":null,"f1":0,"modelVersion":"escalation-logreg-supervised-v1","modelPath":"data/models/escalation-model-supervised-latest.json"}
-{"generatedAt":"2026-06-17T17:03:42.533Z","eventCount":2000,"positives":0,"negatives":2000,"auc":null,"f1":0,"modelVersion":"escalation-gbdt-full-v3","modelPath":"public/data/models/escalation-model-champion.json"}
