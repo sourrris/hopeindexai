@@ -136,9 +136,12 @@ async function main() {
 
     assert(Array.isArray(oneDay.events), "days=1 must return an events array");
     assert(Array.isArray(sevenDays.events), "days=7 must return an events array");
+    assert(oneDay.source === "live", "/api/events default source must be live");
+    assert(sevenDays.source === "live", "/api/events default source must be live");
+    assert(reviewQueue.source === "live", "/api/review-queue default source must be live");
     assert(oneDay.count === oneDay.events.length, "days=1 count must match events length");
     assert(sevenDays.count === sevenDays.events.length, "days=7 count must match events length");
-    assert(oneDay.events.length > 0, "days=1 should return at least one event from the static slice");
+    assert(oneDay.events.length > 0, "days=1 should return at least one event from the live feed");
     assert(sevenDays.events.length >= oneDay.events.length, "days=7 should include at least as many events as days=1");
     assert(typeof oneDay.events[0].surfaceExplanation?.summary === "string", "/api/events must return surfaceExplanation");
     assert(typeof oneDay.events[0].uncertainty?.level === "string", "/api/events must return uncertainty");
@@ -174,7 +177,7 @@ async function main() {
     const invalidProbe = await fetch(`${baseUrl}/api/probe?id=missing-event-id`);
     assert(invalidProbe.status === 404, "/api/probe with unknown id must return HTTP 404");
 
-    const probe = await fetchJson(baseUrl, `/api/probe?id=${encodeURIComponent(oneDay.events[0].id)}`);
+    const probe = await fetchJson(baseUrl, `/api/probe?days=1&id=${encodeURIComponent(oneDay.events[0].id)}`);
     assert(typeof probe.probe?.selectedEvent?.surfaceExplanation?.summary === "string", "/api/probe must return selectedEvent.surfaceExplanation");
     assert(typeof probe.probe?.selectedEvent?.uncertainty?.level === "string", "/api/probe must return selectedEvent.uncertainty");
     assert(typeof probe.probe?.reviewCopilot?.bottomLine === "string", "/api/probe must return reviewCopilot.bottomLine");

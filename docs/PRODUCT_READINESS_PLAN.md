@@ -11,33 +11,37 @@ more honest, and easier to explain.
 
 ## Product Goal
 
-HopeIndexAI is an AI-assisted review queue for noisy public conflict signals.
+HopeIndexAI is an AI-assisted stakeholder-importance queue for noisy public
+conflict signals.
 
 The product helps one person answer:
 
 ```text
-Which public event rows should I inspect first?
+Which public event rows look important to the country, person, agency, or
+decision-maker I care about?
 ```
 
 The product does not need to predict the world. It needs to rank noisy events,
-show why each event surfaced, help a human check the source, and measure whether
-the ranking is better than a simple baseline.
+make an explicit assumption about why the event may matter to a stakeholder,
+show the evidence and uncertainty behind that assumption, and help a human audit
+the highest-impact or least-certain calls.
 
 In simple ML terms:
 
 ```text
 raw event rows = noisy sensor readings
-source-checked human labels = answer key
-model score = student's guess
-evaluation report = test score
+stakeholder = the viewpoint that defines "important"
+model judgment = AI's current assumption about importance
+human review = audit and calibration signal
+evaluation report = test score for whether the assumptions are useful
 ```
 
-The best version of this project is a tight human-in-the-loop ML system, not a
-giant intelligence dashboard.
+The best version of this project is a focused AI triage system that explains its
+importance assumptions, not a giant intelligence dashboard or a labeling factory.
 
 ## Best Part Of The Product
 
-The strongest part is the evaluation discipline.
+The strongest part is the assumption and evaluation discipline.
 
 Most solo AI projects stop at:
 
@@ -48,12 +52,13 @@ call an LLM -> show a cool summary
 HopeIndexAI is stronger because it says:
 
 ```text
-rank events -> source-check labels -> compare against baseline -> do not overclaim
+rank events -> state why they matter -> expose uncertainty -> audit the call
+-> compare against baseline -> do not overclaim
 ```
 
-That is the part interviewers should remember. The product has an answer key,
-a baseline, a model, a report, a model card, and guardrails that stop weak labels
-from becoming fake truth.
+That is the part interviewers should remember. The product has an AI judgment,
+a stakeholder frame, an audit trail, a baseline, a report, a model card, and
+guardrails that stop confident-sounding assumptions from becoming fake truth.
 
 ## MVP Scope
 
@@ -61,15 +66,31 @@ The MVP should be one clean workflow:
 
 ```text
 Open app
--> see ranked event queue
+-> choose or confirm the stakeholder frame
+-> see ranked live stakeholder-importance queue
 -> click one event
--> see source, reason, score, uncertainty, and similar signals
+-> see source, stakeholder, reason, assumption, score, and uncertainty
 -> choose Assign, Watch, or Dismiss
--> export/save human review
--> rerun eval to see whether the model improved
+-> export/save the audit decision
+-> view a simple evaluation snapshot
 ```
 
-Anything outside that workflow is secondary.
+Anything outside that workflow is post-MVP.
+
+The first MVP cut line is:
+
+```text
+If it does not help the reviewer decide "assign, watch, or dismiss" for one row,
+hide it, move it to docs, or cut it from the first build.
+```
+
+In simple ML terms, the MVP is not trying to be a full prediction platform. It
+is testing one useful loop:
+
+```text
+model ranks a noisy row -> model explains its assumption -> human audits it
+-> evaluation checks whether that assumption pattern is useful
+```
 
 ## MVP Screens
 
@@ -80,21 +101,25 @@ The solo-project UI should have only three main screens.
 Purpose:
 
 ```text
-Show the next best events to inspect.
+Show the next events most likely to matter to the selected stakeholder.
 ```
 
 Keep:
 
 - Ranked event list.
-- Simple filters: date range, region, queue mode.
+- Stakeholder frame: country, person, agency, or decision-maker.
+- One default queue mode: priority.
+- One optional date range filter.
 - Recommendation: `Assign`, `Watch`, or `Dismiss`.
-- Score, uncertainty, source tier, and one short reason.
+- Score, uncertainty, source tier, and one short importance reason.
 
 Remove or hide:
 
 - Large decorative hero sections.
 - Too many badges.
 - Long explanations of basic UI.
+- Region filter until the queue is already easy to use.
+- Uncertain and coverage queue modes until priority mode feels excellent.
 - Extra panels that do not help the reviewer choose the next event.
 
 ### 2. Event Review
@@ -102,7 +127,7 @@ Remove or hide:
 Purpose:
 
 ```text
-Help the human decide whether this event deserves deeper investigation.
+Help the human decide whether this event matters enough to inspect further.
 ```
 
 Keep:
@@ -110,15 +135,18 @@ Keep:
 - Event title.
 - Source link.
 - Source caveat.
-- Why it surfaced.
+- Stakeholder frame.
+- Why it surfaced for that stakeholder.
+- Explicit model assumption.
 - Model probability, clearly labeled as narrow UCDP organized-violence likelihood.
+- Stakeholder importance score, clearly labeled as an AI judgment.
 - Surface score, clearly labeled as triage rank.
-- Related signals.
 - Human buttons: `Assign`, `Watch`, `Dismiss`.
-- Feedback buttons: `False positive`, `False negative`, `Good call`.
 
 Remove or hide by default:
 
+- Related signals unless they directly explain the recommendation.
+- Feedback buttons: `False positive`, `False negative`, `Good call`.
 - Long AI essay output.
 - Too many impact categories.
 - Complex actor psychology sections unless the user expands "Analyst notes."
@@ -129,16 +157,19 @@ Remove or hide by default:
 Purpose:
 
 ```text
-Show whether the project is honest and measurable.
+Show whether the project is honest and measurable, without making evaluation
+part of the main review flow.
 ```
 
 Keep:
 
 - Number of events.
-- Number of reviewed labels.
-- Number of source-checked human labels.
+- Number of reviewed audit decisions.
+- Number of source-checked audit labels.
+- Number of stakeholder-importance audit decisions.
 - Baseline F1 / precision / recall.
 - Candidate model F1 / precision / recall.
+- Calibration checks for high-confidence importance calls.
 - Future holdout status.
 - Clear warning if holdout AUC is not computable.
 
@@ -146,19 +177,22 @@ Remove or hide:
 
 - Raw JSON-looking metrics in the UI.
 - Internal training details that belong in docs or model card.
+- Manual rerun controls unless they are clearly separated from the reviewer UI.
 
 ## Feature Decisions
 
 | Feature | Keep? | What It Should Do | Why |
 | --- | --- | --- | --- |
-| Ranked event queue | Yes | Show the next rows worth checking | This is the core product |
+| Stakeholder frame | Yes | Define who the event may matter to: country, person, agency, or decision-maker | Importance depends on viewpoint |
+| Ranked event queue | Yes | Show the next rows likely to matter to the selected stakeholder | This is the core product |
 | Assign / Watch / Dismiss | Yes | Capture the reviewer's triage decision | Makes the workflow concrete |
 | Source link and source caveat | Yes | Force the user to inspect evidence | Prevents fake ground truth |
 | Model probability | Yes, but narrow | Estimate UCDP organized-violence match likelihood | Useful only when scoped correctly |
-| Surface score | Yes | Rank events for human review | Best practical triage signal |
-| Active learning queue modes | Yes, but simplify | Priority, Uncertain, Coverage | Helps choose useful labels |
-| Reviewer Copilot | Yes, collapsed by default | Draft checks and caveats | Helpful, but should not dominate UI |
-| Map | Optional | Provide geographic context | Nice, but not the main workflow |
+| Stakeholder importance score | Yes | Estimate whether the event matters to the selected stakeholder | This is the main AI judgment |
+| Surface score | Yes | Rank events for human audit | Best practical triage signal |
+| Active learning queue modes | Post-MVP | Start with priority only; add Uncertain and Coverage later | Extra modes split attention before the core loop is proven |
+| Reviewer Copilot | Post-MVP | Keep drafts and caveats out of the first screen | Helpful later, but it can make the MVP look like a chatbot |
+| Map | Cut from first MVP | Keep geography as text for now | Nice context, but not needed to choose Assign, Watch, or Dismiss |
 | Risk-window model | Docs/demo only for now | Show longer-term country-month research | Impressive but not MVP |
 | Long AI analysis | Hide by default | Expand only when needed | Too much noise for solo-product UI |
 | Large dashboards | No for MVP | Avoid clutter | Makes the app feel unfocused |
@@ -181,7 +215,9 @@ Remaining:
 - Make the product sentence identical everywhere:
 
 ```text
-HopeIndexAI is a human-in-the-loop triage system for noisy public conflict signals.
+HopeIndexAI is an AI triage system that estimates whether noisy public conflict
+signals matter to a chosen stakeholder, then exposes the evidence, assumptions,
+and uncertainty for human audit.
 ```
 
 Done when:
@@ -208,7 +244,9 @@ Remaining:
 
 - Make Review Queue the default first screen.
 - Reduce visible text above the queue.
-- Move map into a secondary tab or side panel.
+- Remove the map from the first MVP UI; keep location as simple text.
+- Hide region filters, Uncertain mode, and Coverage mode until priority mode is clear.
+- Remove Reviewer Copilot from the first MVP UI.
 - Collapse AI analysis, actor psychology, impact map, and long watchlist sections.
 - Use one clear event detail layout:
 
@@ -218,7 +256,6 @@ Source
 Recommendation
 Why surfaced
 Score + probability + uncertainty
-Related signals
 Human decision buttons
 ```
 
@@ -227,6 +264,7 @@ Done when:
 - A new user can understand the app in under 30 seconds.
 - The first screen shows actual events, not a product explanation.
 - The event detail panel fits the main decision without scrolling through many sections.
+- The first MVP has no map, copilot, dashboard, or extra queue modes in the main path.
 
 Proof:
 
@@ -350,37 +388,39 @@ Proof:
 bun run eval:future-holdout
 ```
 
-### Phase F: Grow Human Labels
+### Phase F: Grow Human Audit Labels
 
 Goal:
 
 ```text
-Make the answer key less fragile.
+Make the calibration set less fragile.
 ```
 
 Current state:
 
 ```text
-101 source-checked human labels
+101 source-checked human audit labels
 21 positive
 80 negative
 ```
 
 Remaining:
 
-- Grow to 300-500 source-checked labels.
-- Balance labels across:
+- Grow to 300-500 source-checked audit labels.
+- Balance audits across:
   - region,
   - source tier,
   - model confidence,
+  - stakeholder type,
+  - stakeholder-importance assumptions,
   - false positives,
   - false negatives,
   - high-uncertainty rows.
 
 Done when:
 
-- The model is evaluated on enough diverse labels that the result is harder to dismiss as lucky.
-- The label distribution is documented.
+- The model is evaluated on enough diverse audits that the result is harder to dismiss as lucky.
+- The audit distribution is documented.
 
 Proof:
 
@@ -393,22 +433,26 @@ bun run labels:build
 bun run eval:phase1
 ```
 
-### Phase G: Separate Two Label Targets
+### Phase G: Separate Reality, Violence, Importance, And Priority
 
 Goal:
 
 ```text
-Avoid mixing two different meanings of "important."
+Avoid mixing four different meanings of "important."
 ```
 
 Current problem:
 
-The model target combines:
+The product can accidentally combine:
 
+- Event reality: did the event likely happen?
 - UCDP organized lethal-violence match.
-- Human label: important for triage.
+- Stakeholder importance: does this matter to the country, person, agency, or decision-maker?
+- Review priority: should an analyst inspect this now?
 
-Those are related, but not identical.
+Those are related, but not identical. In first-principles terms, reality is a
+fact question, violence type is a classification question, stakeholder
+importance is a judgment question, and review priority is a workflow question.
 
 Remaining:
 
@@ -416,19 +460,23 @@ Remaining:
 - Add clearer language:
 
 ```text
+eventReality = did the source-backed event likely happen?
 modelProbability = organized-violence match likelihood
+stakeholderImportance = AI assumption about why this matters to the selected stakeholder
 surfaceScore = product triage priority
-humanDecision = should an analyst inspect this further?
+humanDecision = audit decision: assign, watch, dismiss, or correct the assumption
 ```
 
 - Later, consider separate model heads:
+  - `event_reality`
   - `organized_violence_match`
-  - `analyst_triage_importance`
+  - `stakeholder_importance`
+  - `analyst_review_priority`
 
 Done when:
 
 - UI and docs never imply one score means everything.
-- Interview story can explain why the targets differ.
+- Interview story can explain why the targets differ in plain terms.
 
 Proof:
 
@@ -447,18 +495,18 @@ Only add real storage when the solo MVP is already clear.
 Remaining:
 
 - Do not rush into a database before the workflow is simple.
-- Later, move feedback, labels, and review state out of JSONL/local browser storage.
+- Later, move feedback, audit labels, and review state out of JSONL/local browser storage.
 - Add auth only when there are real users.
 
 Done when:
 
 - The product can preserve reviewer decisions across sessions and machines.
-- There is a simple admin/export path for labels.
+- There is a simple admin/export path for audit labels.
 
 Proof:
 
 ```text
-Reviewer can label events, refresh the app, and keep the decisions.
+Reviewer can audit events, refresh the app, and keep the decisions.
 ```
 
 ## What To Cut From The Solo MVP
@@ -470,9 +518,15 @@ Cut or hide these until the core workflow is excellent:
 - Long generated analysis blocks.
 - Too many tabs.
 - Too many metrics in the main screen.
+- Map.
+- Reviewer Copilot.
+- Uncertain and Coverage queue modes.
+- Region filters.
+- False-positive / false-negative / good-call buttons in the main event view.
 - Multi-domain geopolitical forecasting.
 - Finance/market impact sections unless direct evidence exists.
-- Any feature that does not help answer: "Should I inspect this row?"
+- Any feature that does not help answer: "Does this row matter to this stakeholder,
+  and should I inspect it now?"
 
 ## Resume-Ready Definition
 
@@ -480,8 +534,9 @@ The project is resume-ready when this is true:
 
 ```text
 I can open the app, show the queue, inspect one event, explain the model target,
-show source-checked labels, show the eval report, and explain what evidence
-would make me trust or reject the model.
+show the stakeholder-importance assumption, show source-checked audit labels,
+show the eval report, and explain what evidence would make me trust or reject
+the model.
 ```
 
 Minimum checklist:
@@ -499,18 +554,20 @@ Minimum checklist:
 Use this:
 
 ```text
-I built HopeIndexAI as a human-in-the-loop triage system for noisy public conflict
-signals. The hard part was not calling an AI model. The hard part was creating a
-workflow where public event rows are ranked, source-checked, labeled by humans,
-compared against a baseline, and prevented from becoming fake ground truth.
+I built HopeIndexAI as an AI triage system for noisy public conflict signals.
+The hard part was not calling an AI model. The hard part was creating a workflow
+where the AI makes an explicit assumption about why an event matters to a
+selected stakeholder, exposes its evidence and uncertainty, and lets humans
+audit the most important or uncertain calls.
 ```
 
 Then say the honest limitation:
 
 ```text
-The model is promising on source-checked Phase 1 labels, but future-holdout AUC
-is not yet computable because the current holdout has zero verified positives.
-So I treat it as a triage assistant, not a verified forecasting system.
+The current evaluation is promising on source-checked Phase 1 audit labels, but
+future-holdout AUC is not yet computable because the current holdout has zero
+verified positives. So I treat it as an inspectable importance-ranking assistant,
+not a verified forecasting system.
 ```
 
 That answer is stronger than overclaiming.

@@ -1,12 +1,14 @@
 # HopeIndexAI
 
-AI-assisted triage for public conflict signals.
+AI-assisted stakeholder-importance triage for public conflict signals.
 
-HopeIndexAI is a human-in-the-loop triage system for noisy public conflict signals.
+HopeIndexAI is an AI triage system that estimates whether noisy public conflict
+signals matter to a chosen stakeholder, then exposes the evidence, assumptions,
+and uncertainty for human audit.
 
-It helps OSINT watch analysts rank noisy public event rows and decide which few deserve deeper investigation. It is deliberately scoped to **conflict and lethal-violence risk signals** (UCDP-organized-violence patterns), not broad world prediction. It keeps model output separate from source-checked human ground truth.
+It helps OSINT watch analysts rank noisy public event rows and decide which few deserve deeper investigation for a country, agency, person, or watch analyst. It is deliberately scoped to **conflict and lethal-violence risk signals** (UCDP-organized-violence patterns), not broad world prediction. It keeps model output separate from source-checked audit evidence.
 
-In simple ML terms: the model is the student, and source-checked human labels are the answer key.
+In simple ML terms: the model makes an importance assumption, and source-checked human audit labels help calibrate whether that assumption was useful.
 
 ## Docs
 
@@ -71,24 +73,25 @@ bun run eval:phase1
 
 ## Current Status
 
-- 1,500 public event rows.
+- Live GDELT event rows are the default app input.
+- 1,500 checked-in event rows remain as the offline evaluation/training slice.
 - 120 reviewed labels.
 - 19 LLM-reviewed labels.
-- 101 source-checked human labels.
-- Model retrained on the 101 source-checked labels; candidate now beats the baseline on the source-checked eval set.
+- 101 source-checked human audit labels.
+- Model retrained on the 101 source-checked audit labels; candidate now beats the baseline on the source-checked eval set.
 - Positioned as a conflict/death-risk triage assistant, not a broad world-prediction tool.
 
-The current metrics are useful for product triage, but they are not final proof. LLM-reviewed labels are like practice notes; source-checked human labels are the answer key.
+The current metrics are useful for product triage, but they are not final proof. LLM-reviewed labels are practice notes; source-checked human audit labels are the calibration set for checking model assumptions.
 
 ## Assignment Queue
 
 The default workflow is built around one watch-analyst decision for **conflict and organized-violence signals**:
 
 ```text
-Should this public event be assigned for deeper investigation?
+Does this public event matter to the selected stakeholder enough to assign for deeper investigation?
 ```
 
-The UI recommends `Assign`, `Watch`, or `Dismiss` from the existing `surfaceScore` thresholds and lets the analyst save local prototype notes in the browser. Those exported notes are not source-checked human ground truth and do not modify eval files.
+The UI recommends `Assign`, `Watch`, or `Dismiss` from the existing `surfaceScore` thresholds and lets the analyst save local prototype notes in the browser. The stakeholder frame explains why the row may matter, but it does not change ranking yet. Exported notes are not source-checked audit labels and do not modify eval files.
 
 The queue now uses active learning modes:
 
@@ -96,7 +99,7 @@ The queue now uses active learning modes:
 - `Uncertain` finds rows where a human answer would reduce model confusion.
 - `Coverage gaps` finds under-reviewed regions, themes, or sources.
 
-In simple ML terms: clustering prevents grading the same incident twice, uncertainty says how shaky the row is, and active learning picks the next homework examples that can improve the answer key fastest.
+In simple ML terms: clustering prevents auditing the same incident twice, uncertainty says how shaky the row is, and active learning picks useful rows for checking the model's assumptions.
 
 The durable reviewer queue lives at `data/labeling/reviewer_queue.jsonl` and is built with:
 
@@ -107,23 +110,27 @@ bun run labels:queue -- --mode=priority --limit=100
 The best source strategy for this project is:
 
 - Use GDELT/public event rows for discovery because they are broad, current, and already linked to source URLs.
-- Use the article/source URL as the required human source check before any label becomes ground truth.
+- Use the article/source URL as the required human source check before any label becomes a source-checked audit label.
 - Use UCDP GED and UCDP Candidate as open curated conflict evidence when coverage overlaps the row.
 - Use local ACLED aggregate workbooks as trend/context evidence when available, not as row-level label truth.
 - Treat YouTube, X/Twitter, and other social posts as leads only unless the content is public, attributable, independently checkable, and allowed by the platform terms.
 
-The Reviewer Copilot prepares the review packet for that decision. It explains why the event surfaced, what a human should verify, what uncertainty remains, and what to watch next. When LM Studio is running on localhost:1234 (or an Anthropic API key is configured as fallback), it can draft a short review note, but that note is assistant text only. It is not evidence, not a human label, and not source-checked ground truth.
+The Reviewer Copilot prepares the review packet for that decision. It explains why the event surfaced, what stakeholder-importance assumption is being made, what a human should verify, what uncertainty remains, and what to watch next. When LM Studio is running on localhost:1234 (or an Anthropic API key is configured as fallback), it can draft a short review note, but that note is assistant text only. It is not evidence, not an audit label, and not source-checked ground truth.
 
 ## Architecture
 
 ```text
-public/data/events.json
+Live GDELT feed
 -> Hono API
 -> event window filtering
 -> surfaceScore sorting
 -> assignment queue
 -> React + Leaflet map context
 -> event detail and AI probe flow
+
+public/data/events.json
+-> offline evaluation/training slice
+-> repeatable local and CI checks
 
 data/eval/phase1_labels.jsonl
 -> eval script

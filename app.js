@@ -1,5 +1,5 @@
 // HopeIndexAI — React app (JSX, transpiled by Babel standalone)
-// Data: GDELT Project  |  Map: Leaflet  |  Font: Geist
+// Data: GDELT Project  |  Font: Geist
 
 const { useState, useEffect, useRef, useMemo, useCallback } = React;
 
@@ -14,20 +14,8 @@ const THEME_COLORS = {
   Science:       "#06B6D4",   // bright cyan-teal
 };
 
-// CartoDB light tiles — forced white theme, noWrap prevents world repetition
-const TILE_LIGHT = "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png";
-const TILE_ATTR  = '© <a href="https://osm.org">OSM</a> © <a href="https://carto.com">CARTO</a>';
-
-// Hard world bounds — no panning past the edge of the earth
-const WORLD_BOUNDS = L.latLngBounds(L.latLng(-85, -180), L.latLng(85, 180));
-
-const CONTINENTS  = ["All", "Americas", "Europe", "Middle East", "Africa", "Asia", "Oceania"];
-const CATEGORIES  = ["All", "Diplomacy", "Conflict", "Econ", "Environment", "Humanitarian", "Science"];
 const DAY_OPTIONS = [1, 3, 7, 30];
-const DATA_SOURCES = [
-  { value: "static", label: "Saved demo" },
-  { value: "live", label: "Live feed" },
-];
+const DEFAULT_DATA_SOURCE = "live";
 const RELATED_SIGNAL_MIN_SCORE = 42;
 
 const GITHUB_URL = "https://github.com/sourrris/hopeindexai";
@@ -50,14 +38,35 @@ const DECISION_OPTIONS = [
   { value: "dismiss", label: "Dismiss" },
 ];
 
-const QUEUE_MODES = [
-  { value: "priority", label: "Priority" },
-  { value: "uncertain", label: "Uncertain" },
-  { value: "coverage", label: "Coverage gaps" },
+const STAKEHOLDER_FRAMES = [
+  {
+    value: "Country",
+    label: "Country",
+    description: "Assume the reviewer cares about national stability, security, and diplomatic consequences.",
+    focus: "national stability and policy risk",
+  },
+  {
+    value: "Agency",
+    label: "Agency",
+    description: "Assume the reviewer cares about what an institution may need to monitor, verify, or respond to.",
+    focus: "institutional action and verification need",
+  },
+  {
+    value: "Person",
+    label: "Person",
+    description: "Assume the reviewer cares about impact on a named person, leader, decision-maker, or exposed public figure.",
+    focus: "personal exposure and decision pressure",
+  },
+  {
+    value: "Watch analyst",
+    label: "Watch analyst",
+    description: "Assume the reviewer cares about whether this row deserves scarce analyst attention now.",
+    focus: "review priority under uncertainty",
+  },
 ];
 
 const PROOF_METRICS = [
-  { label: "Answer key", value: "101 labels", note: "source-checked by humans" },
+  { label: "Audit set", value: "101 labels", note: "source-checked by humans" },
   { label: "Model F1", value: "0.75", note: "candidate on Phase 1" },
   { label: "Baseline F1", value: "0.35", note: "simple surface rule" },
   { label: "Future holdout", value: "AUC n/a", note: "zero verified positives" },
@@ -489,7 +498,7 @@ function downloadAssignmentDecisions(decisions) {
     exportVersion: "hopeindexai.assignmentDecisions.v1",
     exportedAt: new Date().toISOString(),
     storageKey: ASSIGNMENT_STORAGE_KEY,
-    warning: "Prototype review notes only. These are not source-checked human ground-truth labels and do not modify eval files.",
+    warning: "Prototype review notes only. These are not source-checked audit labels and do not modify eval files.",
     decisions: rows,
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
@@ -618,6 +627,7 @@ function IconExternalLink() {
 // ── Top bar ───────────────────────────────────────────────────────────────────
 
 function TopBar({ dataSource }) {
+  const isLive = dataSource === "live";
   return (
     <header className="topbar" role="banner">
       <span className="topbar-brand">
@@ -626,303 +636,13 @@ function TopBar({ dataSource }) {
 
       <div className="topbar-center">
         <div className="product-mode">Model-Guided Review</div>
-        <div className="live-badge" role="status" aria-label={dataSource === "live" ? "Live GDELT feed loaded" : "Saved demo data loaded"}>
+        <div className="live-badge" role="status" aria-label={isLive ? "Live GDELT feed loaded" : "Offline evaluation data loaded"}>
           <span className="live-dot" aria-hidden="true" />
-          {dataSource === "live" ? "LIVE" : "DEMO"}
+          {isLive ? "LIVE" : "OFFLINE"}
         </div>
-        <div className="topbar-proof">101 labels · model F1 0.75 · baseline F1 0.35 · holdout AUC unavailable</div>
+        <div className="topbar-proof">101 audit labels · model F1 0.75 · baseline F1 0.35 · holdout AUC unavailable</div>
       </div>
     </header>
-  );
-}
-
-// ── Leaflet map ───────────────────────────────────────────────────────────────
-
-function MapView({ events, selectedEvent, onSelectEvent }) {
-  const containerRef = useRef(null);
-  const mapRef       = useRef(null);
-  const tileRef      = useRef(null);
-  const layerRef     = useRef(null);
-
-  // Init map once
-  useEffect(() => {
-    if (mapRef.current) return;
-
-    const map = L.map(containerRef.current, {
-      center: [22, 12],
-      zoom: 2,
-      minZoom: 2,            // can't zoom out past one world
-      maxZoom: 14,
-      maxBounds: WORLD_BOUNDS,
-      maxBoundsViscosity: 1.0,
-      zoomControl: false,
-      attributionControl: true,
-    });
-
-    L.control.zoom({ position: "bottomright" }).addTo(map);
-
-    const addTile = () => {
-      if (tileRef.current) map.removeLayer(tileRef.current);
-      tileRef.current = L.tileLayer(TILE_LIGHT, {
-        attribution: TILE_ATTR,
-        subdomains: "abcd",
-        maxZoom: 19,
-        bounds: WORLD_BOUNDS,
-        noWrap: true,        // prevents world-tile repetition
-      }).addTo(map);
-    };
-    addTile();
-
-    layerRef.current = L.layerGroup().addTo(map);
-    mapRef.current = map;
-
-    return () => {
-      map.remove();
-      mapRef.current = null;
-    };
-  }, []);
-
-  // Pan to selected event
-  useEffect(() => {
-    if (!selectedEvent || !mapRef.current) return;
-    mapRef.current.setView(
-      [selectedEvent.lat, selectedEvent.lon],
-      Math.max(mapRef.current.getZoom(), 6),
-      { animate: true, duration: 0.6 }
-    );
-  }, [selectedEvent]);
-
-  // Redraw markers when events change
-  useEffect(() => {
-    if (!layerRef.current) return;
-    layerRef.current.clearLayers();
-
-    // Sort ascending so most significant render on top in SVG layer order
-    const sorted = [...events].sort((a, b) => rankSignalScore(a) - rankSignalScore(b));
-
-    // Top 5 surfaced events get an SVG pulse ring colored by theme
-    const topEventIds = new Set(
-      events
-        .sort((a, b) => rankSignalScore(b) - rankSignalScore(a))
-        .slice(0, 5)
-        .map((e) => e.id)
-    );
-
-    for (const ev of sorted) {
-      const fill    = THEME_COLORS[ev.theme] || "#4F46E5";
-      const stroke  = "#FFFFFF";
-      const opacity = ev.severity === "low" ? 0.60 : ev.severity === "medium" ? 0.76 : 0.90;
-      const radius  = eventDisplayRadius(ev);
-
-      const marker = L.circleMarker([ev.lat, ev.lon], {
-        radius,
-        fillColor:   fill,
-        color:       stroke,
-        weight:      1.5,
-        fillOpacity: opacity,
-      });
-
-      const actorLine = ev.actor1 !== "Unknown"
-        ? `${ev.actor1}${ev.actor2 !== "Unknown" ? " → " + ev.actor2 : ""}`
-        : ev.quadLabel;
-
-      marker.bindTooltip(
-        `<strong>[${ev.theme}] ${actorLine}</strong><br/>${ev.location || ev.country}<br/>Signal: <strong>${formatSignalScore(ev)}</strong>`,
-        { sticky: true, direction: "top", html: true }
-      );
-      marker.on("click", () => onSelectEvent(ev));
-      layerRef.current.addLayer(marker);
-
-      // Pulse ring: second circleMarker, transparent fill, animated via CSS
-      if (topEventIds.has(ev.id)) {
-        const ring = L.circleMarker([ev.lat, ev.lon], {
-          radius,
-          fillColor:   "transparent",
-          color:       fill,
-          weight:      1.8,
-          fillOpacity: 0,
-          className:   "pulse-ring-svg",
-        });
-        layerRef.current.addLayer(ring);
-      }
-    }
-  }, [events, onSelectEvent]);
-
-  return <div ref={containerRef} id="map" aria-label="Geopolitical event map" />;
-}
-
-// ── Map legend ────────────────────────────────────────────────────────────────
-
-function MapLegend() {
-  return (
-    <div className="map-legend" aria-label="Map legend">
-      {Object.entries(THEME_COLORS).map(([name, color]) => (
-        <div className="legend-row" key={name}>
-          <span className="legend-swatch" style={{ background: color }} />
-          {name}
-        </div>
-      ))}
-      <div className="legend-row" style={{ marginTop: 4, color: "var(--text-muted)", fontSize: 9 }}>
-        Ring = Top significance
-      </div>
-    </div>
-  );
-}
-
-// ── Filter panel ──────────────────────────────────────────────────────────────
-
-function FilterPanel({ filters, onFilter, filteredEvents, selectedEvent, onSelectEvent, loading }) {
-  const [open,  setOpen]  = useState(true);
-  const [limit, setLimit] = useState(120);
-
-  const visible = useMemo(() => filteredEvents.slice(0, limit), [filteredEvents, limit]);
-
-  const setDays      = (d) => onFilter({ ...filters, days: d });
-  const setContinent = (c) => onFilter({ ...filters, continent: c });
-  const setCategory  = (cat) => onFilter({ ...filters, category: cat });
-  const setSource    = (source) => onFilter({ ...filters, source });
-
-  return (
-    <aside className={`filter-panel${open ? "" : " collapsed"}`} aria-label="Event filters">
-      <div className="filter-head" onClick={() => setOpen(!open)} aria-expanded={open}>
-        <div className="filter-head-left">
-          {open && <span className="filter-label">Filters</span>}
-          {open && (
-            <span className="filter-count-badge" aria-live="polite">
-              {loading ? "…" : filteredEvents.length.toLocaleString()}
-            </span>
-          )}
-        </div>
-        <button className="filter-toggle-btn" aria-label={open ? "Collapse" : "Expand"}>
-          <IconChevron open={open} />
-        </button>
-      </div>
-
-      <div className="filter-body">
-        <div className="filter-group">
-          <div className="filter-group-label">Data</div>
-          <div className="chip-row">
-            {DATA_SOURCES.map((source) => (
-              <button
-                key={source.value}
-                className={`chip${filters.source === source.value ? " on" : ""}`}
-                onClick={() => setSource(source.value)}
-                aria-pressed={filters.source === source.value}
-              >{source.label}</button>
-            ))}
-          </div>
-        </div>
-
-        <div className="filter-group">
-          <div className="filter-group-label">Range</div>
-          <div className="chip-row">
-            {DAY_OPTIONS.map((d) => (
-              <button
-                key={d}
-                className={`chip${filters.days === d ? " on" : ""}`}
-                onClick={() => setDays(d)}
-                aria-pressed={filters.days === d}
-              >{d}d</button>
-            ))}
-          </div>
-        </div>
-
-        <div className="filter-group">
-          <div className="filter-group-label">Region</div>
-          <div className="chip-row">
-            {CONTINENTS.map((c) => (
-              <button
-                key={c}
-                className={`chip${filters.continent === c ? " on" : ""}`}
-                onClick={() => setContinent(c)}
-                aria-pressed={filters.continent === c}
-              >{c}</button>
-            ))}
-          </div>
-        </div>
-
-        <div className="filter-group">
-          <div className="filter-group-label">Category</div>
-          <div className="chip-row">
-            {CATEGORIES.map((cat) => {
-              const isOn = filters.category === cat;
-              return (
-                <button
-                  key={cat}
-                  className={`chip${isOn ? " on" : ""}`}
-                  onClick={() => setCategory(cat)}
-                  aria-pressed={isOn}
-                  style={isOn && cat !== "All" ? { background: THEME_COLORS[cat], borderColor: THEME_COLORS[cat] } : {}}
-                >{cat}</button>
-              );
-            })}
-          </div>
-        </div>
-
-        {filteredEvents.length > 0 && (
-          <>
-            <div className="elist-header" aria-live="polite">
-              {Math.min(limit, filteredEvents.length)} of {filteredEvents.length.toLocaleString()}
-            </div>
-            <div className="elist" role="list">
-              {visible.map((ev) => (
-                <EventRow
-                  key={ev.id}
-                  event={ev}
-                  selected={selectedEvent?.id === ev.id}
-                  onClick={() => onSelectEvent(ev)}
-                />
-              ))}
-            </div>
-            {filteredEvents.length > limit && (
-              <button className="load-more" onClick={() => setLimit((l) => l + 120)}>
-                + {(filteredEvents.length - limit).toLocaleString()} more
-              </button>
-            )}
-          </>
-        )}
-      </div>
-    </aside>
-  );
-}
-
-function EventRow({ event, selected, onClick }) {
-  const title = eventTitle(event);
-  const signalScore = eventSignalScore(event);
-  const scoreLabel = formatSignalScore(event);
-  const hasScore = signalScore !== null;
-
-  const scoreColor = !hasScore ? "#6B7280" : signalScore >= 72 ? "#DC2626" : signalScore >= 52 ? "#D97706" : "#6B7280";
-  const scoreBg    = !hasScore ? "rgba(107,114,128,.12)" : signalScore >= 72 ? "rgba(239,68,68,.12)" : signalScore >= 52 ? "rgba(245,158,11,.12)" : "rgba(107,114,128,.12)";
-
-  return (
-    <div
-      className={`erow${selected ? " sel" : ""}`}
-      onClick={onClick}
-      role="listitem"
-      tabIndex={0}
-      onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && onClick()}
-      aria-selected={selected}
-    >
-      <span className={`edot ${event.theme}`} aria-hidden="true" style={{ background: THEME_COLORS[event.theme] || "#4F46E5" }} />
-      <div className="erow-body">
-        <div className="erow-title" title={title}>{title}</div>
-        <div className="erow-meta">{event.location || event.country} · {event.date}</div>
-      </div>
-      <span className="hope-badge" title={event.surfaceReasons?.[0] || "Signal score"} style={{
-        fontSize: "10px",
-        fontFamily: "var(--font-mono)",
-        fontWeight: "700",
-        padding: "2px 6px",
-        borderRadius: "4px",
-        background: scoreBg,
-        color: scoreColor,
-        marginLeft: "8px",
-        flexShrink: 0
-      }}>
-        {scoreLabel}
-      </span>
-    </div>
   );
 }
 
@@ -1036,7 +756,7 @@ function IntelPacket({ event, dataSource }) {
     setError("");
     setLoading(true);
 
-    fetch(`/api/probe?id=${encodeURIComponent(event.id)}&source=${dataSource ?? "static"}`, { signal: ctrl.signal })
+    fetch(`/api/probe?id=${encodeURIComponent(event.id)}&source=${dataSource ?? DEFAULT_DATA_SOURCE}`, { signal: ctrl.signal })
       .then((r) => r.json())
       .then((data) => {
         if (data.error) throw new Error(data.error);
@@ -1195,27 +915,6 @@ function EventDetail({ event, events, onClose, onSelectEvent, apiKey, aiReady, d
   }, [onClose]);
 
   const title = eventTitle(event);
-  const [feedbackStatus, setFeedbackStatus] = useState("");
-
-  const submitFeedback = async (decision) => {
-    setFeedbackStatus("sending");
-    try {
-      const res = await fetch("/api/feedback", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ eventId: event.id, decision }),
-      });
-      if (res.ok) {
-        setFeedbackStatus(`Thanks — marked ${decision.replace(/_/g, " ")}.`);
-      } else {
-        const data = await res.json();
-        setFeedbackStatus(data.error || "Failed to save feedback.");
-      }
-    } catch (err) {
-      setFeedbackStatus(err.message || "Failed to save feedback.");
-    }
-  };
-
   const hopeScore = event.hopeScore ?? 50;
   const strokeDash = (hopeScore / 100) * 125.6; // circumference (2 * PI * R where R=20 is 125.6)
 
@@ -1358,16 +1057,6 @@ function EventDetail({ event, events, onClose, onSelectEvent, apiKey, aiReady, d
             </div>
           </div>
 
-          <div className="feedback-section" style={{ margin: "16px 0", padding: 12, border: "1px solid var(--border)", borderRadius: 8, background: "var(--bg-elevated)" }}>
-            <div className="dfield-label" style={{ marginBottom: 8 }}>Reviewer Feedback</div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <button className="feedback-btn fp" onClick={() => submitFeedback("false_positive")} disabled={feedbackStatus === "sending"}>False positive</button>
-              <button className="feedback-btn fn" onClick={() => submitFeedback("false_negative")} disabled={feedbackStatus === "sending"}>False negative</button>
-              <button className="feedback-btn good" onClick={() => submitFeedback("good_call")} disabled={feedbackStatus === "sending"}>Good call</button>
-            </div>
-            {feedbackStatus && <div className="feedback-status" style={{ marginTop: 8, fontSize: 12, color: "var(--text-muted)" }}>{feedbackStatus}</div>}
-          </div>
-
           <IntelPacket event={event} dataSource={dataSource} />
 
           <LinkedSignals event={event} events={events} onSelectEvent={onSelectEvent} />
@@ -1453,7 +1142,7 @@ function RiskWindowsView() {
           <div className="risk-kicker">Country-month triage</div>
           <h1>Ranked windows that deserve analyst attention</h1>
           <p>
-            The model sees only prior months. It ranks messy country-month records before the answer key arrives.
+            The model sees only prior months. It ranks messy country-month records before the observed outcome arrives.
           </p>
         </div>
         <div className="risk-model-card">
@@ -1544,7 +1233,7 @@ function RiskWindowsView() {
               <h2>{selectedWindow.country} · {selectedWindow.month}</h2>
               <div className="risk-score-big">{selectedWindow.riskScore.toFixed(3)}</div>
               <div className="risk-outcome">
-                <span>Observed answer key</span>
+                <span>Observed outcome</span>
                 <strong>
                   {selectedWindow.actual.organizedViolence
                     ? `${selectedWindow.actual.events} events, ${selectedWindow.actual.deathsBest} deaths`
@@ -1588,258 +1277,12 @@ function ScoreBar({ label, value, tone }) {
   );
 }
 
-function QueueFilterGroup({ label, options, value, onChange, colorize }) {
-  return (
-    <div className="queue-filter-group">
-      <span>{label}</span>
-      <div className="chip-row">
-        {options.map((option) => {
-          const isOn = value === option;
-          return (
-            <button
-              type="button"
-              key={option}
-              className={`chip${isOn ? " on" : ""}`}
-              onClick={() => onChange(option)}
-              aria-pressed={isOn}
-              style={isOn && colorize && option !== "All" ? { background: THEME_COLORS[option], borderColor: THEME_COLORS[option] } : {}}
-            >
-              {typeof option === "number" ? `${option}d` : option}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function QueueModeGroup({ value, onChange }) {
-  return (
-    <div className="queue-filter-group queue-mode-group">
-      <span>Queue mode</span>
-      <div className="chip-row">
-        {QUEUE_MODES.map((mode) => {
-          const isOn = value === mode.value;
-          return (
-            <button
-              type="button"
-              key={mode.value}
-              className={`chip${isOn ? " on" : ""}`}
-              onClick={() => onChange(mode.value)}
-              aria-pressed={isOn}
-            >
-              {mode.label}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function QueueFilterBar({ filters, onFilter, loading, resultCount, decisionCount, onExport, queueMode, onQueueMode }) {
-  const setDays = (days) => onFilter({ ...filters, days });
-  const setContinent = (continent) => onFilter({ ...filters, continent });
-  const setCategory = (category) => onFilter({ ...filters, category });
-  const setSource = (source) => onFilter({ ...filters, source });
-
-  return (
-    <div className="queue-filter-bar" aria-label="Assignment queue filters">
-      <QueueFilterGroup label="Data" options={DATA_SOURCES.map((source) => source.label)} value={DATA_SOURCES.find((source) => source.value === filters.source)?.label ?? "Saved demo"} onChange={(label) => setSource(DATA_SOURCES.find((source) => source.label === label)?.value ?? "static")} />
-      <QueueFilterGroup label="Range" options={DAY_OPTIONS} value={filters.days} onChange={setDays} />
-      <QueueFilterGroup label="Region" options={CONTINENTS} value={filters.continent} onChange={setContinent} />
-      <QueueFilterGroup label="Topic" options={CATEGORIES} value={filters.category} onChange={setCategory} colorize />
-      <div className="queue-export-box">
-        <span>{loading ? "loading" : `${resultCount} best picks`} · {decisionCount} saved choices</span>
-        <button type="button" onClick={onExport} disabled={decisionCount === 0}>
-          Download choices
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function ReviewerCopilotPanel({ event, apiKey, aiReady }) {
-  const [probe, setProbe] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [draftNote, setDraftNote] = useState("");
-  const [draftLoading, setDraftLoading] = useState(false);
-  const [draftError, setDraftError] = useState("");
-
-  useEffect(() => {
-    if (!event?.id) return;
-    const ctrl = new AbortController();
-    setProbe(null);
-    setError("");
-    setDraftNote("");
-    setDraftError("");
-    setLoading(true);
-
-    fetch(`/api/probe?id=${encodeURIComponent(event.id)}`, { signal: ctrl.signal })
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.error) throw new Error(data.error);
-        setProbe(data.probe ?? null);
-      })
-      .catch((err) => {
-        if (err.name !== "AbortError") setError(err.message ?? "Copilot failed.");
-      })
-      .finally(() => {
-        if (!ctrl.signal.aborted) setLoading(false);
-      });
-
-    return () => ctrl.abort();
-  }, [event?.id]);
-
-  const draftReviewNote = useCallback(async () => {
-    if (!event) return;
-    setDraftLoading(true);
-    setDraftError("");
-    setDraftNote("");
-
-    try {
-      const res = await fetch("/api/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ apiKey, events: [event], mode: "review_note" }),
-      });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      setDraftNote(data.analysis ?? "");
-    } catch (err) {
-      setDraftError(err.message ?? "Draft note failed.");
-    } finally {
-      setDraftLoading(false);
-    }
-  }, [event, apiKey]);
-
-  if (loading) {
-    return (
-      <div className="copilot-panel">
-        <div className="copilot-head">
-          <div>
-            <div className="brief-label">Reviewer Copilot</div>
-            <p>Preparing source checks, uncertainty, and next review steps.</p>
-          </div>
-          <span className="copilot-badge">Building</span>
-        </div>
-      </div>
-    );
-  }
-
-  if (error || !probe?.reviewCopilot) {
-    return (
-      <div className="copilot-panel">
-        <div className="copilot-head">
-          <div>
-            <div className="brief-label">Reviewer Copilot</div>
-            <p>{error || "No copilot packet available for this event."}</p>
-          </div>
-          <span className="copilot-badge weak">Thin</span>
-        </div>
-      </div>
-    );
-  }
-
-  const copilot = probe.reviewCopilot;
-  const suggested = copilot.suggestedDecision;
-  const probeEvent = probe.selectedEvent ?? event;
-  const surfaceExplanation = eventSurfaceExplanation(probeEvent);
-  const uncertainty = eventUncertainty(probeEvent);
-
-  return (
-    <div className="copilot-panel">
-      <div className="copilot-head">
-        <div>
-          <div className="brief-label">Reviewer Copilot</div>
-          <p>{copilot.bottomLine}</p>
-        </div>
-        <span className={`copilot-badge ${suggested.decision}`}>
-          {suggested.label} · {suggested.confidence}%
-        </span>
-      </div>
-
-      <div className="copilot-decision">
-        <strong>{suggested.label}</strong>
-        <span>{suggested.rationale}</span>
-      </div>
-
-      <div className="copilot-meta-row">
-        <div>
-          <span>Surface</span>
-          <strong>{surfaceExplanation.label}</strong>
-          <small>{surfaceExplanation.score}/100 triage priority</small>
-        </div>
-        <div>
-          <span>Uncertainty</span>
-          <strong className={`uncertainty-${uncertainty.level}`}>{uncertainty.level}</strong>
-          <small>{uncertainty.score}/100 row shakiness</small>
-        </div>
-        <div>
-          <span>Incident cluster</span>
-          <strong>{probeEvent.eventClusterRole ?? "representative"}</strong>
-          <small>{Number(probeEvent.eventClusterSize ?? 1).toLocaleString()} row(s)</small>
-        </div>
-      </div>
-
-      <div className="copilot-grid">
-        <div className="copilot-section">
-          <div className="brief-label">Why surfaced</div>
-          <ul className="why-list">
-            {copilot.whySurfaced.map((item) => <li key={item}>{item}</li>)}
-          </ul>
-        </div>
-
-        <div className="copilot-section">
-          <div className="brief-label">What to verify</div>
-          <ul className="why-list">
-            {copilot.whatToVerify.map((item) => <li key={item}>{item}</li>)}
-          </ul>
-        </div>
-      </div>
-
-      <div className="copilot-section">
-        <div className="brief-label">Uncertainty</div>
-        <ul className="warning-list">
-          {copilot.uncertainty.map((item) => <li key={item}>{item}</li>)}
-        </ul>
-      </div>
-
-      <div className="copilot-section">
-        <div className="brief-label">Watch next</div>
-        <ul className="why-list">
-          {copilot.watchNext.slice(0, 4).map((item) => <li key={item}>{item}</li>)}
-        </ul>
-      </div>
-
-      <div className="copilot-note-box">
-        <div className="copilot-note-head">
-          <div>
-            <div className="brief-label">Draft review note</div>
-            <p>LLM drafting is assistant text only. It is not evidence and cannot make a label source-checked.</p>
-          </div>
-          {aiReady && (
-            <button type="button" onClick={draftReviewNote} disabled={draftLoading}>
-              {draftLoading ? "Drafting..." : draftNote ? "Re-draft" : "Draft note"}
-            </button>
-          )}
-        </div>
-        {!aiReady && (
-          <p className="quiet-note">Use LM Studio on localhost:1234 or add an Anthropic API key to draft a short note. The deterministic copilot still works without one.</p>
-        )}
-        {draftError && <div className="ai-error">{draftError}</div>}
-        {draftNote && <div className="ai-output copilot-draft">{draftNote}</div>}
-      </div>
-    </div>
-  );
-}
-
-function GlobalRiskQueue({ events, loading, selectedEvent, onFocusEvent, onOpenMap, filters, onFilter, apiKey, aiReady }) {
+function GlobalRiskQueue({ events, loading, selectedEvent, onFocusEvent, filters }) {
   const [decisionById, setDecisionById] = useState(readAssignmentDecisions);
   const [reviewQueue, setReviewQueue] = useState(null);
   const [queueLoading, setQueueLoading] = useState(false);
   const [queueError, setQueueError] = useState("");
+  const [stakeholderFrame, setStakeholderFrame] = useState("Country");
 
   useEffect(() => {
     writeAssignmentDecisions(decisionById);
@@ -1850,7 +1293,7 @@ function GlobalRiskQueue({ events, loading, selectedEvent, onFocusEvent, onOpenM
     setQueueLoading(true);
     setQueueError("");
 
-    fetch(`/api/review-queue?days=${filters.days}&limit=80&mode=priority&source=${filters.source ?? "static"}`, { signal: ctrl.signal })
+    fetch(`/api/review-queue?days=${filters.days}&limit=80&mode=priority&source=${filters.source ?? DEFAULT_DATA_SOURCE}`, { signal: ctrl.signal })
       .then((r) => r.json())
       .then((data) => {
         if (data.error) throw new Error(data.error);
@@ -1882,13 +1325,8 @@ function GlobalRiskQueue({ events, loading, selectedEvent, onFocusEvent, onOpenM
           );
 
     return packets
-      .filter((item) => {
-        if (filters.continent !== "All" && item.event.continent !== filters.continent) return false;
-        if (filters.category !== "All" && item.event.theme !== filters.category) return false;
-        return true;
-      })
       .slice(0, 10);
-  }, [events, filters.continent, filters.category, reviewQueue]);
+  }, [events, reviewQueue]);
 
   const selected = selectedEvent
     ? rankedEvents.find((item) => item.event.id === selectedEvent.id) ?? rankedEvents[0]
@@ -1901,6 +1339,7 @@ function GlobalRiskQueue({ events, loading, selectedEvent, onFocusEvent, onOpenM
 
   const selectedDecision = selected ? decisionById[selected.event.id] : null;
   const decisionCount = Object.keys(decisionById).length;
+  const stakeholderMeta = STAKEHOLDER_FRAMES.find((frame) => frame.value === stakeholderFrame) ?? STAKEHOLDER_FRAMES[0];
 
   const setDecision = (nextDecision) => {
     if (!selected) return;
@@ -1944,9 +1383,28 @@ function GlobalRiskQueue({ events, loading, selectedEvent, onFocusEvent, onOpenM
     <section className="review-view" aria-label="Model-guided review">
       <div className="review-hero">
         <div>
-          <div className="risk-kicker">Model-guided review</div>
-          <h1>Find the next public conflict signal worth checking.</h1>
-          <p>The model beat the baseline on the current source-checked answer key. A human still opens the source and makes the final call.</p>
+          <div className="risk-kicker">Review queue</div>
+          <h1>Next public conflict signals to audit</h1>
+          <div className="queue-filter-group">
+            <span>Stakeholder frame</span>
+            <div className="chip-row">
+              {STAKEHOLDER_FRAMES.map((frame) => {
+                const isOn = stakeholderFrame === frame.value;
+                return (
+                  <button
+                    type="button"
+                    key={frame.value}
+                    className={`chip${isOn ? " on" : ""}`}
+                    onClick={() => setStakeholderFrame(frame.value)}
+                    aria-pressed={isOn}
+                  >
+                    {frame.label}
+                  </button>
+                );
+              })}
+            </div>
+            <small>{stakeholderMeta.description}</small>
+          </div>
         </div>
         <div className="proof-strip" aria-label="Evaluation proof">
           {PROOF_METRICS.map((metric) => (
@@ -1964,7 +1422,7 @@ function GlobalRiskQueue({ events, loading, selectedEvent, onFocusEvent, onOpenM
       <div className="review-layout">
         <section className="review-list-panel" aria-label="Next events to review">
           <div className="review-section-head">
-            <span>Next events to review</span>
+            <span>Next events likely to matter to: {stakeholderMeta.label}</span>
             <span>{loading || queueLoading ? "loading" : `${rankedEvents.length} shown`}</span>
           </div>
 
@@ -2022,6 +1480,11 @@ function GlobalRiskQueue({ events, loading, selectedEvent, onFocusEvent, onOpenM
                   <small>what to inspect first</small>
                 </div>
                 <div>
+                  <span>Stakeholder frame</span>
+                  <strong>{stakeholderMeta.label}</strong>
+                  <small>{stakeholderMeta.focus}</small>
+                </div>
+                <div>
                   <span>Model probability</span>
                   <strong>{modelProbabilityPct(selected.event)}</strong>
                   <small>UCDP organized-violence match</small>
@@ -2054,8 +1517,8 @@ function GlobalRiskQueue({ events, loading, selectedEvent, onFocusEvent, onOpenM
                 </div>
                 <p>
                   {selectedDecision
-                    ? `Saved locally as ${selectedDecision.decisionLabel}. This is still not source-checked ground truth.`
-                    : "Decide only after checking the source. This saves a prototype note in your browser."}
+                    ? `Saved locally as ${selectedDecision.decisionLabel}. This is still not a source-checked audit label.`
+                    : "Decide only after checking the source. This saves a prototype audit note in your browser."}
                 </p>
               </div>
 
@@ -2073,7 +1536,7 @@ function GlobalRiskQueue({ events, loading, selectedEvent, onFocusEvent, onOpenM
               </div>
 
               <div className="review-block">
-                <div className="brief-label">Why this surfaced</div>
+                <div className="brief-label">Why this may matter to {stakeholderMeta.label}</div>
                 <ul className="why-list">
                   {selected.reasonCodes.slice(0, 4).map((reason) => <li key={reason}>{reason}</li>)}
                 </ul>
@@ -2115,7 +1578,7 @@ function LoadingOverlay({ slow }) {
           {slow ? "Reading GDELT cluster index..." : "Syncing dynamic geopolitical events"}
         </div>
         {slow && (
-          <div className="loading-sub">Sub-50ms static Edge CDN response times</div>
+          <div className="loading-sub">Fetching the live GDELT event feed</div>
         )}
       </div>
     </div>
@@ -2135,22 +1598,12 @@ function ErrorToast({ message, onDismiss }) {
 
 function App() {
   const [events,   setEvents]   = useState([]);
-  const [filters,  setFilters]  = useState({ days: 7, continent: "All", category: "All", source: "static" });
+  const [filters] = useState({ days: 7, source: DEFAULT_DATA_SOURCE });
   const [selected, setSelected] = useState(null);
   const [loading,  setLoading]  = useState(false);
   const [slowLoad, setSlowLoad] = useState(false);
   const [error,    setError]    = useState("");
-  const [apiKey,   setApiKey]   = useState(() => sessionStorage.getItem("hope_api_key") ?? "");
-  const [aiReady,  setAiReady]  = useState(false);
   const [liveRefreshTick, setLiveRefreshTick] = useState(0);
-
-  // Check once whether the server has an API key configured
-  useEffect(() => {
-    fetch("/api/ai-status")
-      .then((r) => r.json())
-      .then((d) => setAiReady(d.ready || Boolean(apiKey)))
-      .catch(() => setAiReady(Boolean(apiKey)));
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     let cancelled = false;
@@ -2183,27 +1636,13 @@ function App() {
   }, [filters.source]);
 
   const filteredEvents = useMemo(() => events
-    .filter((e) => {
-      if (filters.continent !== "All" && e.continent !== filters.continent) return false;
-      if (filters.category !== "All" && e.theme !== filters.category) return false;
-      return true;
-    })
     .sort((a, b) =>
       rankSignalScore(b) - rankSignalScore(a) ||
       Number(b.numMentions ?? 0) - Number(a.numMentions ?? 0)
-    ), [events, filters.continent, filters.category]);
-
-  const handleSelectEvent = useCallback((ev) => {
-    setSelected((prev) => (prev?.id === ev.id ? null : ev));
-  }, []);
+    ), [events]);
 
   const handleFocusEvent = useCallback((ev) => {
     setSelected(ev);
-  }, []);
-
-  const handleFilter = useCallback((next) => {
-    setFilters(next);
-    setSelected(null);
   }, []);
 
   return (
@@ -2218,11 +1657,7 @@ function App() {
           loading={loading}
           selectedEvent={selected}
           onFocusEvent={handleFocusEvent}
-          onOpenMap={() => {}}
           filters={filters}
-          onFilter={handleFilter}
-          apiKey={apiKey}
-          aiReady={aiReady}
         />
       </main>
 

@@ -2,20 +2,20 @@
 
 This file keeps the bigger idea separate from the build plan.
 
-The short version: HopeIndexAI helps an OSINT watch analyst inspect noisy public geopolitical signals in a better order and decide which events deserve deeper investigation. It does not claim to know the future. It ranks events, shows evidence, and makes it easier to check whether the ranking was useful.
+The short version: HopeIndexAI helps an OSINT watch analyst inspect noisy public geopolitical signals in a better order and decide which events may matter to a country, agency, person, or watch analyst. It does not claim to know the future. It ranks events, shows evidence, states the model's importance assumption, and makes it easier to check whether that assumption was useful.
 
 ## Product Question
 
 The useful question is:
 
 ```text
-Given many noisy event rows, which few should a person inspect first?
+Given many noisy event rows, which few look important to the stakeholder a person cares about?
 ```
 
 For V1, the operational decision is:
 
 ```text
-Should this public event be assigned for deeper investigation?
+Does this public event matter enough to assign for deeper investigation?
 ```
 
 That is narrower and more honest than:
@@ -32,7 +32,7 @@ The system has five basic parts:
 events
 actors
 sources
-labels
+audit labels
 model scores
 ```
 
@@ -41,10 +41,10 @@ Plain meaning:
 - Events are things reported in public data.
 - Actors are the people, groups, governments, or institutions involved.
 - Sources are where the event came from.
-- Labels are human judgments about whether the event mattered.
-- Model scores are guesses that must be checked against labels.
+- Audit labels are human judgments about whether the model's importance assumption was useful.
+- Model scores are assumptions that must be checked against audit labels.
 
-If the labels are weak, the model proof is weak. If the actor names are messy, the model history is messy. If the sources are weak, the confidence should be lower.
+If the audit labels are weak, the model proof is weak. If the actor names are messy, the model history is messy. If the sources are weak, the confidence should be lower.
 
 ## Target Workflow
 
@@ -55,8 +55,8 @@ load event slice
 -> inspect source evidence
 -> compare related signals
 -> reason about actor incentives
--> label whether the event mattered
--> evaluate whether ranking improved
+-> audit whether the event mattered to the stakeholder
+-> evaluate whether the assumptions improved
 ```
 
 ## Target Architecture
@@ -78,13 +78,13 @@ raw events
 In simple ML terms:
 
 ```text
-model = student
-source-checked human labels = answer key
+model assumption = AI's current belief about importance
+source-checked human audit labels = calibration set
 LLM/Codex labels = practice notes
 eval report = test score
 ```
 
-Practice notes help move faster, but they are not the final answer key.
+Practice notes help move faster, but they are not the final calibration set.
 
 ## Bayesian Framing
 
@@ -100,13 +100,13 @@ Then update it with evidence:
 Duplicate rows add noise.
 Bad actor names break history.
 Weak source evidence lowers confidence.
-LLM labels are useful but not final truth.
+LLM labels are useful but not final audit truth.
 ```
 
 Updated belief:
 
 ```text
-Better labels and cleaner structure should come before massive scale.
+Better audit labels and cleaner structure should come before massive scale.
 ```
 
 ## Game-Theory Framing
@@ -133,12 +133,12 @@ Do not claim:
 Do claim:
 
 - The system helps triage noisy public signals.
-- The system separates model output from source-checked human labels.
-- The system can measure whether a ranking beats a baseline once enough source-checked human labels exist.
+- The system separates model output from source-checked human audit labels.
+- The system can measure whether a ranking beats a baseline once enough source-checked human audit labels exist.
 
 ## Long-Term Direction
 
-The long-term version is a human-in-the-loop intelligence workflow:
+The long-term version is an AI-assisted stakeholder-importance workflow:
 
 ```text
 map
@@ -155,7 +155,7 @@ The near-term version should stay smaller:
 ```text
 good event slice
 clear assignment order
-source-checked human labels
+source-checked human audit labels
 repeatable eval
 honest report
 ```

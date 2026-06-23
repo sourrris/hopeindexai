@@ -55,7 +55,7 @@ What it does:
 After rollback, restart the server or wait for the model cache TTL (5 minutes) to expire. Verify:
 
 ```bash
-curl http://localhost:3000/api/probe?id=<event-id>&source=static | jq '.probe.prediction.modelVersion'
+curl http://localhost:3000/api/probe?id=<event-id> | jq '.probe.prediction.modelVersion'
 ```
 
 ## 3. Investigate an alert
@@ -67,8 +67,8 @@ Common alerts and how to triage them:
 - AI analysis is optional; the rest of the pipeline works without it.
 
 ### Events missing `surfaceScore`
-- Run `bun run surface:phase1` to recalibrate scores.
-- Check `public/data/events.json` exists and is valid JSON.
+- For live rows, check network access to GDELT and retry the request.
+- For offline evaluation rows, run `bun run surface:phase1` to recalibrate scores and check `public/data/events.json` is valid JSON.
 
 ### `surfaceModelProbability` drift >10%
 - Compare the current distribution in `data/monitoring/baseline.json`.

@@ -10,9 +10,6 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/geist-sans@5/index.min.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/geist-mono@5/index.min.css" />
 
-  <!-- Leaflet -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-
   <style>
     /* ── Tokens — forced white, no dark mode ─────────────────────────────── */
     :root {
@@ -165,50 +162,6 @@
 
     /* ── Main ────────────────────────────────────────────────────────────── */
     .app-main { position: relative; flex: 1; min-height: 0; overflow: hidden; }
-    #map { width: 100%; height: 100%; }
-
-    /* ── Filter panel — z-index > 1000 to clear ALL Leaflet layers ───────── */
-    .filter-panel {
-      position: absolute; top: 12px; left: 12px;
-      z-index: 1100;                     /* above leaflet-top (z:1000) */
-      width: 272px; max-height: calc(100% - 24px);
-      background: var(--panel);
-      border: 1px solid var(--border-hi); border-radius: 14px;
-      box-shadow: var(--shadow-lg);
-      display: flex; flex-direction: column; overflow: hidden;
-    }
-    .filter-panel.collapsed { width: 44px; }
-    .filter-panel.collapsed .filter-body { display: none; }
-
-    .filter-head {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 11px 13px; border-bottom: 1px solid var(--border);
-      flex-shrink: 0; cursor: pointer; user-select: none;
-    }
-    .filter-head-left { display: flex; align-items: center; gap: 8px; }
-    .filter-label {
-      font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
-      text-transform: uppercase; color: var(--text-sec);
-    }
-    .filter-count-badge {
-      font-family: var(--font-mono); font-size: 10px;
-      padding: 1px 6px; border-radius: 4px;
-      background: var(--surface-hi); border: 1px solid var(--border);
-      color: var(--text-sec);
-    }
-    .filter-toggle-btn {
-      background: none; border: none; cursor: pointer;
-      color: var(--text-muted); display: flex; align-items: center;
-      padding: 2px; border-radius: 4px; transition: color 0.1s;
-    }
-    .filter-toggle-btn:hover { color: var(--text); }
-
-    .filter-body { overflow-y: auto; flex: 1; min-height: 0; padding-bottom: 4px; }
-    .filter-group { padding: 12px 13px 2px; }
-    .filter-group-label {
-      font-size: 9px; font-weight: 700; letter-spacing: 0.1em;
-      text-transform: uppercase; color: var(--text-muted); margin-bottom: 7px;
-    }
     .chip-row { display: flex; flex-wrap: wrap; gap: 4px; }
     .chip {
       padding: 3px 9px; border-radius: 6px;
@@ -218,70 +171,6 @@
     }
     .chip:hover { border-color: var(--border-hi); color: var(--text); }
     .chip.on { background: var(--text); color: var(--bg); border-color: var(--text); }
-
-    /* Event list */
-    .elist-header {
-      padding: 8px 13px 5px;
-      font-size: 9px; font-weight: 700; letter-spacing: 0.1em;
-      text-transform: uppercase; color: var(--text-muted);
-      border-top: 1px solid var(--border); margin-top: 4px;
-    }
-    .elist { overflow-y: auto; max-height: 240px; }
-    .erow {
-      display: flex; align-items: flex-start; gap: 9px;
-      padding: 8px 13px; cursor: pointer;
-      border-bottom: 1px solid var(--border);
-      transition: background 0.1s;
-    }
-    .erow:hover, .erow.sel { background: var(--surface); }
-    .edot {
-      width: 7px; height: 7px; border-radius: 50%;
-      flex-shrink: 0; margin-top: 5px;
-    }
-    .edot.Diplomacy     { background: #4F46E5; }
-    .edot.Conflict      { background: #EF4444; }
-    .edot.Econ          { background: #D97706; }
-    .edot.Environment   { background: #10B981; }
-    .edot.Humanitarian  { background: #D946EF; }
-    .edot.Science       { background: #06B6D4; }
-    .erow-body { flex: 1; min-width: 0; }
-    .erow-title {
-      font-size: 11px; font-weight: 500; color: var(--text);
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.3;
-    }
-    .erow-meta {
-      font-size: 10px; color: var(--text-muted);
-      font-family: var(--font-mono); margin-top: 2px;
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    }
-    .sev-badge {
-      font-size: 8px; font-weight: 700; letter-spacing: 0.06em;
-      text-transform: uppercase; padding: 1px 5px; border-radius: 3px;
-      flex-shrink: 0; margin-top: 3px; font-family: var(--font-mono);
-    }
-    .sev-low      { background: rgba(255,190,0,.12);  color: #CC9200; }
-    .sev-medium   { background: rgba(255,122,0,.12);  color: #CC5500; }
-    .sev-high     { background: rgba(255,26,26,.12);  color: #CC0000; }
-    .sev-critical { background: rgba(192,0,10,.14);   color: #8C0008; }
-    .load-more {
-      width: 100%; padding: 9px; background: none; border: none;
-      border-top: 1px solid var(--border); color: var(--text-muted);
-      font-size: 10px; cursor: pointer; transition: color 0.1s;
-      font-family: var(--font-mono);
-    }
-    .load-more:hover { color: var(--text); }
-
-    /* ── SVG pulse rings (top 5 doom — circleMarker, compositor-only) ─────── */
-    .pulse-ring-svg {
-      transform-box: fill-box;
-      transform-origin: center;
-      animation: ring-expand 2s ease-out infinite;
-      pointer-events: none;
-    }
-    @keyframes ring-expand {
-      0%   { transform: scale(1);   opacity: 0.7; }
-      100% { transform: scale(3.2); opacity: 0;   }
-    }
 
     /* ── Event detail ────────────────────────────────────────────────────── */
     .detail-backdrop {
@@ -1234,158 +1123,6 @@
       font-size: 12px;
       line-height: 1.5;
     }
-    .copilot-panel {
-      margin: 0 0 14px;
-      border: 1px solid var(--border-hi);
-      border-radius: 8px;
-      background: #FFFFFF;
-      overflow: hidden;
-    }
-    .copilot-head {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: 12px;
-      padding: 12px;
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
-    }
-    .copilot-head p {
-      margin: 0;
-      color: var(--text-sec);
-      font-size: 12px;
-      line-height: 1.5;
-    }
-    .copilot-badge {
-      flex-shrink: 0;
-      padding: 5px 8px;
-      border: 1px solid var(--border-hi);
-      border-radius: 999px;
-      background: #FFFFFF;
-      color: var(--text-sec);
-      font-family: var(--font-mono);
-      font-size: 10px;
-      font-weight: 900;
-      text-transform: uppercase;
-      white-space: nowrap;
-    }
-    .copilot-badge.assign {
-      border-color: rgba(220,38,38,.28);
-      background: rgba(239,68,68,.08);
-      color: #B91C1C;
-    }
-    .copilot-badge.watch {
-      border-color: rgba(217,119,6,.30);
-      background: rgba(245,158,11,.10);
-      color: #B45309;
-    }
-    .copilot-badge.dismiss, .copilot-badge.weak {
-      border-color: rgba(107,114,128,.26);
-      background: rgba(107,114,128,.08);
-      color: #4B5563;
-    }
-    .copilot-decision {
-      display: flex;
-      gap: 10px;
-      padding: 11px 12px;
-      border-bottom: 1px solid var(--border);
-      font-size: 12px;
-      line-height: 1.5;
-    }
-    .copilot-decision strong {
-      flex-shrink: 0;
-      font-family: var(--font-mono);
-      text-transform: uppercase;
-    }
-    .copilot-decision span {
-      color: var(--text-sec);
-    }
-    .copilot-meta-row {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      border-bottom: 1px solid var(--border);
-      background: #FFFFFF;
-    }
-    .copilot-meta-row div {
-      min-width: 0;
-      padding: 10px 12px;
-      border-right: 1px solid var(--border);
-    }
-    .copilot-meta-row div:last-child { border-right: 0; }
-    .copilot-meta-row span, .copilot-meta-row small {
-      display: block;
-      font-family: var(--font-mono);
-      font-size: 9px;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-    }
-    .copilot-meta-row strong {
-      display: block;
-      margin: 4px 0 2px;
-      font-size: 12px;
-      color: var(--text);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      text-transform: capitalize;
-    }
-    .copilot-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 0;
-      border-bottom: 1px solid var(--border);
-    }
-    .copilot-grid .copilot-section:first-child {
-      border-right: 1px solid var(--border);
-    }
-    .copilot-section {
-      padding: 12px;
-    }
-    .copilot-section + .copilot-section {
-      border-top: 1px solid var(--border);
-    }
-    .copilot-grid .copilot-section + .copilot-section {
-      border-top: 0;
-    }
-    .copilot-note-box {
-      padding: 12px;
-      border-top: 1px solid var(--border);
-      background: #FFFFFF;
-    }
-    .copilot-note-head {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: 12px;
-      margin-bottom: 8px;
-    }
-    .copilot-note-head p {
-      margin: 0;
-      color: var(--text-sec);
-      font-size: 11px;
-      line-height: 1.45;
-    }
-    .copilot-note-head button {
-      flex-shrink: 0;
-      border: 1px solid var(--border-hi);
-      background: var(--text);
-      color: var(--bg);
-      border-radius: 7px;
-      padding: 7px 10px;
-      font-size: 11px;
-      font-weight: 800;
-      cursor: pointer;
-    }
-    .copilot-note-head button:disabled {
-      cursor: wait;
-      opacity: 0.55;
-    }
-    .copilot-draft {
-      margin-top: 10px;
-      padding-top: 10px;
-      border-top: 1px solid var(--border);
-    }
     .active-learning-box {
       margin: 0 0 14px;
       padding: 12px;
@@ -1989,43 +1726,6 @@
     }
     .error-dismiss:hover { color: #fff; }
 
-    /* ── Leaflet overrides ───────────────────────────────────────────────── */
-    .leaflet-container { font-family: var(--font-sans); }
-    .leaflet-control-zoom a {
-      background: var(--bg) !important; color: var(--text) !important;
-      border-color: var(--border-hi) !important; font-weight: 600 !important;
-    }
-    .leaflet-control-zoom a:hover { background: var(--surface) !important; }
-    .leaflet-control-attribution {
-      background: rgba(255,255,255,0.8) !important;
-      color: var(--text-muted) !important; font-size: 9px !important;
-    }
-    .leaflet-tooltip {
-      background: var(--bg) !important; border: 1px solid var(--border-hi) !important;
-      border-radius: 6px !important; box-shadow: var(--shadow) !important;
-      color: var(--text) !important; font-family: var(--font-sans) !important;
-      font-size: 11px !important; padding: 5px 9px !important;
-    }
-    .leaflet-tooltip::before { display: none !important; }
-
-    /* ── Map legend ──────────────────────────────────────────────────────── */
-    .map-legend {
-      position: absolute; bottom: 28px; right: 12px;
-      z-index: 1100;
-      background: var(--panel);
-      border: 1px solid var(--border-hi); border-radius: 10px;
-      padding: 10px 13px; box-shadow: var(--shadow-md);
-      display: flex; flex-direction: column; gap: 6px;
-    }
-    .legend-row {
-      display: flex; align-items: center; gap: 8px;
-      font-size: 10px; font-weight: 600; color: var(--text-sec);
-      font-family: var(--font-mono); letter-spacing: 0.02em;
-    }
-    .legend-swatch {
-      width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
-    }
-
     /* ── Signal triage visual gauge ──────────────────────────────────────── */
     .hope-gauge-container {
       background: var(--surface);
@@ -2141,24 +1841,8 @@
       to   { transform: translateX(-50%) translateY(0);   opacity: 1; }
     }
 
-    .feedback-btn {
-      padding: 6px 10px;
-      border-radius: 6px;
-      border: 1px solid var(--border);
-      background: var(--bg);
-      color: var(--text);
-      font-size: 11px;
-      font-weight: 600;
-      cursor: pointer;
-    }
-    .feedback-btn:hover:not(:disabled) { background: var(--bg-elevated); }
-    .feedback-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-    .feedback-btn.fp { color: #B91C1C; border-color: #FCA5A5; }
-    .feedback-btn.fn { color: #B45309; border-color: #FCD34D; }
-    .feedback-btn.good { color: #047857; border-color: #6EE7B7; }
-
     @media (prefers-reduced-motion: reduce) {
-      .live-dot, .gh-btn, .pulse-ring-svg, .loading-bar-fill,
+      .live-dot, .gh-btn, .loading-bar-fill,
       .ai-thinking-dot { animation: none !important; }
       .detail-panel, .detail-backdrop, .error-toast   { animation: none !important; }
     }
@@ -2170,9 +1854,7 @@
       .topbar-brand { font-size: 18px; }
       .topbar-right { display: none; }
       .view-tab { padding: 5px 7px; }
-      .filter-panel { width: calc(100vw - 24px); max-width: 300px; }
       .detail-panel { width: 100vw; }
-      .map-legend   { display: none; }
       .risk-view { padding: 12px; }
       .risk-head, .risk-grid { grid-template-columns: 1fr; }
       .risk-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -2189,9 +1871,6 @@
       .queue-scores { grid-column: 3 / 4; grid-row: 1 / 3; }
       .brief-panel { padding: 12px; }
       .brief-scores, .brief-facts, .assignment-summary { grid-template-columns: 1fr 1fr; }
-      .copilot-grid { grid-template-columns: 1fr; }
-      .copilot-grid .copilot-section:first-child { border-right: 0; }
-      .copilot-grid .copilot-section + .copilot-section { border-top: 1px solid var(--border); }
       .topbar { height: 56px; }
       .topbar-center { justify-content: flex-end; min-width: 0; }
       .product-mode { display: none; }
@@ -2233,9 +1912,6 @@
   <!-- React 18 -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-
-  <!-- Leaflet -->
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <!-- Babel standalone -->
   <script src="https://unpkg.com/@babel/standalone@7.24.0/babel.min.js"></script>

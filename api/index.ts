@@ -2031,7 +2031,7 @@ function buildReviewCopilot(
   const evidenceWord = evidenceGrade.label === "strong" ? "well-supported" : evidenceGrade.label === "partial" ? "partly supported" : "thin";
   const bottomLine =
     `${label}: ${eventActors(target)} in ${location} is a ${target.severity} ${target.theme ?? "event"} signal with priority ${priority}/100. ` +
-    `Treat the evidence as ${evidenceWord}; this is a review aid, not source-checked ground truth.`;
+    `Treat the evidence as ${evidenceWord}; this is a review aid, not a source-checked audit label.`;
 
   return {
     bottomLine,
@@ -2042,7 +2042,7 @@ function buildReviewCopilot(
       decision,
       label,
       confidence,
-      rationale: `Priority ${priority}/100 maps to ${reviewDecisionDescription(decision)}. Evidence grade is ${evidenceGrade.label}, so a human should verify the source before this becomes an answer-key label.`,
+      rationale: `Priority ${priority}/100 maps to ${reviewDecisionDescription(decision)}. Evidence grade is ${evidenceGrade.label}, so a human should verify the source before this becomes a source-checked audit label.`,
     },
     watchNext: buildReviewWatchNext(target, actorGame, watchlist, relatedSignals),
   };
@@ -2314,7 +2314,7 @@ async function fetchGdelt(days: number): Promise<GdeltEvent[]> {
 type EventSource = "static" | "live";
 
 function eventSourceFromQuery(raw: string | undefined | null): EventSource {
-  return raw === "live" ? "live" : "static";
+  return raw === "static" ? "static" : "live";
 }
 
 async function loadEventsForSource(source: EventSource, days: number): Promise<{ events: GdeltEvent[]; updated?: string; source: EventSource }> {
@@ -2426,7 +2426,7 @@ async function buildHealthStatus(): Promise<{
   let eventsCheckPassed = false;
   let eventsMessage = "";
   try {
-    const dataset = await loadEventsForSource("static", 7);
+    const dataset = await loadEventsForSource("live", 7);
     const events = dataset.events;
     if (events.length === 0) {
       eventsMessage = "No events loaded.";
@@ -2495,7 +2495,7 @@ app.get("/api/events", async (c) => {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("API -> Failed to load events:", msg);
-    return c.json({ error: source === "live" ? "Failed to load live GDELT feed" : "Failed to load pre-enriched event dataset", events: [], count: 0, source }, 500);
+    return c.json({ error: source === "live" ? "Failed to load live GDELT feed" : "Failed to load offline evaluation event dataset", events: [], count: 0, source }, 500);
   }
 });
 
@@ -2698,7 +2698,7 @@ app.post("/api/analyze", async (c) => {
       userPrompt =
         `Draft a short reviewer note for a human analyst deciding whether this public event should be assigned, watched, or dismissed.\n\n` +
         `IMPORTANT LIMITS:\n` +
-        `- This is assistant drafting, not evidence and not a source-checked human label.\n` +
+        `- This is assistant drafting, not evidence and not a source-checked audit label.\n` +
         `- Do not say the event is verified unless the evidence pack proves it.\n` +
         `- Keep the note grounded in the source, GDELT metadata, related signals, and reviewer copilot packet.\n` +
         `- Separate what is known from what is inferred.\n\n` +
@@ -2707,7 +2707,7 @@ app.post("/api/analyze", async (c) => {
         `## Draft review note\n` +
         `2-4 sentences explaining why the event deserves assign/watch/dismiss attention.\n\n` +
         `## Evidence to check\n` +
-        `3 bullets the human should verify before marking any source-checked label.\n\n` +
+        `3 bullets the human should verify before marking any source-checked audit label.\n\n` +
         `## Decision caveat\n` +
         `One sentence reminding the reviewer this AI note is not ground truth.`;
     } else {

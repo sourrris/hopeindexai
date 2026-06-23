@@ -6,11 +6,13 @@ Keep it simple: the phase doc should answer what we are doing now, what comes ne
 
 ## Current Rule
 
-HopeIndexAI is a human-in-the-loop triage system for noisy public conflict signals.
+HopeIndexAI is an AI triage system that estimates whether noisy public conflict
+signals matter to a chosen stakeholder, then exposes the evidence, assumptions,
+and uncertainty for human audit.
 
-In simple ML terms: the model is the student, and source-checked human labels are the answer key. LLM/Codex labels are useful practice notes, but only source-checked human-reviewed labels can prove improvement.
+In simple ML terms: the model makes an importance assumption, and source-checked human audit labels calibrate whether that assumption was useful. LLM/Codex labels are useful practice notes, but only source-checked human-reviewed audit labels can prove improvement.
 
-The V1 target user is an OSINT watch analyst. The main product decision is whether a noisy public event should be assigned for deeper investigation.
+The V1 target user is an OSINT watch analyst. The main product decision is whether a noisy public event matters enough to the selected stakeholder to assign for deeper investigation.
 
 ## Phase Status
 
@@ -18,13 +20,13 @@ The V1 target user is an OSINT watch analyst. The main product decision is wheth
 | --- | --- | --- | --- |
 | 0 | Baseline audit | Done | App and data shape are documented |
 | 1 | Measured MVP | Active | `bun run test:all` passes |
-| 2 | Training-grade records | Active | Validated records, external evidence status, plus 101 source-checked human labels |
+| 2 | Training-grade records | Active | Validated records, external evidence status, plus 101 source-checked human audit labels |
 | 3 | Storage and ingestion | Planned | Public data becomes an export |
 | 4 | Entity resolution | Backlog | Messy actors map to stable IDs |
 | 5 | Source and claim quality | Backlog | Important claims have evidence |
 | 6 | Actor context in probes | Backlog | Probes use actor profiles carefully |
 | 7 | Feedback loop | Backlog | User feedback feeds eval data |
-| 8 | Model upgrades | Later | New model beats baseline on source-checked human labels |
+| 8 | Model upgrades | Later | New model beats baseline on source-checked human audit labels |
 | 9 | Production scale | Later | More data improves measured performance |
 
 ## How To Update Phases
@@ -47,7 +49,7 @@ Done now:
 
 - React + Leaflet map exists.
 - Hono API exists in `api/index.ts`.
-- Static event data exists in `public/data/events.json`.
+- Live GDELT API loading exists; `public/data/events.json` remains the offline evaluation slice.
 - Local Bun and Vercel paths are documented.
 - Ontology docs and validation scripts exist.
 
@@ -65,8 +67,8 @@ Goal: Make the prototype measurable before claiming it improved.
 
 Built now:
 
-- `/api/events` serves the checked-in event slice.
-- Event windows filter relative to the latest date in the dataset.
+- `/api/events` serves live GDELT rows by default.
+- Event windows filter relative to the requested live feed window.
 - Event order uses `surfaceScore`, with `markerRadius` as fallback.
 - The default UI is an assignment queue with `Assign`, `Watch`, and `Dismiss` prototype decisions.
 - The Reviewer Copilot prepares source checks, uncertainty notes, and watch items for the selected assignment row.
@@ -93,10 +95,10 @@ Future holdout: zero verified positives, so AUC is not computable
 Done means:
 
 - `bun run test:all` passes.
-- The eval report says the candidate beats the baseline on the current source-checked Phase 1 labels.
+- The eval report says the candidate beats the baseline on the current source-checked Phase 1 audit labels.
 - No non-human label is marked `humanReviewed: true`.
-- Improvement claims must stay scoped to the current source-checked Phase 1 answer key.
-- Local browser assignment notes are not source-checked ground truth and do not update eval labels.
+- Improvement claims must stay scoped to the current source-checked Phase 1 audit set.
+- Local browser assignment notes are not source-checked audit labels and do not update eval labels.
 - Reviewer Copilot and LLM review notes are analyst assistance only; they do not mark labels as source-checked.
 - Active learning recommends the next rows to source-check; it never creates human labels by itself.
 - Cluster members and duplicate rows should point reviewers toward the representative row first.
@@ -112,19 +114,19 @@ bun run test:all
 
 Status: Active.
 
-Goal: Build the real answer key and the record layer a future model can learn from.
+Goal: Build the real audit set and the record layer a future model can learn from.
 
 Why it matters:
 
 - Without training-grade records, the model learns from noisy browser rows.
-- Without source-checked human labels, we have a demo and provisional metrics.
-- With validated records and source-checked human labels, we can test whether the ranking truly beats the baseline.
+- Without source-checked human audit labels, we have a demo and provisional metrics.
+- With validated records and source-checked human audit labels, we can test whether the ranking truly beats the baseline.
 - With external evidence candidates, we can compare noisy rows against curated world-event datasets without calling them final product truth.
 
 Step-by-step:
 
 1. Build training records from public events and Phase 1 labels.
-2. Validate that only source-checked human labels can become final importance truth.
+2. Validate that only source-checked human audit labels can calibrate final importance claims.
 3. Import UCDP GED as historical organized-violence evidence.
 4. Match training records against external evidence by date, country, location, actor, and type.
 5. Review 20 to 30 more labels by hand after opening the source URL or enough source context.
@@ -159,7 +161,7 @@ Done means:
 - The reviewer actually checked the event/source context.
 - Weak future-window targets are not treated as final evaluation truth.
 - External evidence is not treated as final importance truth.
-- `bun run eval:phase1` reports against source-checked human labels.
+- `bun run eval:phase1` reports against source-checked human audit labels.
 
 ## Phase 3: Storage And Ingestion
 
@@ -213,7 +215,7 @@ Phase 7: Feedback loop.
 Let users mark wrong actor, wrong severity, false alarm, missed escalation, and source-check issues.
 
 Phase 8: Model upgrades.
-Try better models only after the human label loop is trustworthy.
+Try better models only after the human audit loop is trustworthy.
 
 Phase 9: Production scale.
 Scale data volume only after more data improves measured performance.
@@ -224,7 +226,7 @@ Do these before adding new big features:
 
 1. Keep `data/training/phase2_records.jsonl` generated and validated.
 2. Keep UCDP profile and match status generated when the local UCDP files exist.
-3. Source-check and human-review the next 30 labels.
+3. Source-check and human-review the next 30 audit labels.
 4. Rerun `bun run records:build`, `bun run records:validate`, and `bun run eval:phase1`.
 
 ## Decision Rule
