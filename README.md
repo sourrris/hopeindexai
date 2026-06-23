@@ -4,7 +4,7 @@ Real-time geopolitical event intelligence. Live GDELT data classified into confl
 
 ## Stack
 
-- **Frontend** — React 18 (CDN), Leaflet, Geist font
+- **Frontend** — React 18, Leaflet, Bun-built browser bundle, Geist font
 - **Backend** — Bun + Hono (TypeScript), GDELT proxy with 15-min cache
 - **AI** — Claude (Anthropic) via server-side key, never exposed to the browser
 - **Data** — [GDELT Project](https://www.gdeltproject.org) v2 export stream
@@ -31,11 +31,18 @@ bun run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-**Node.js alternative** (no Bun):
+Build the production browser asset:
 
 ```bash
-npm install hono fflate
-npx tsx server.ts
+bun run build
+```
+
+Run local checks:
+
+```bash
+bun run typecheck
+bun test
+bun run build
 ```
 
 ---
@@ -60,7 +67,7 @@ That's it. Click any event on the map to open the detail panel, then hit **Analy
 
 ### How it works
 
-The key lives on the server — it is never sent to the browser or logged. When you click **Analyze Event**, the frontend calls `/api/analyze`, the server reads `ANTHROPIC_API_KEY` from the environment, and returns the analysis. The key never leaves your machine.
+The key lives on the server — it is never sent to the browser or logged. When you click **Analyze Event**, the frontend calls `/api/analyze`, the server reads `ANTHROPIC_API_KEY` from the environment, validates the event payload, and returns the analysis. The key never leaves your machine.
 
 ---
 

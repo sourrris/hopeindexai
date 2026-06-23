@@ -2,12 +2,12 @@ import { app } from "./api/index";
 
 // Static files — local dev only (Vercel serves these from public/)
 app.get("/", async (c) => {
-  const html = await Bun.file("index.html").text();
+  const html = await Bun.file("public/index.html").text();
   return c.html(html);
 });
 
 app.get("/app.js", async (c) => {
-  const js = await Bun.file("app.js").text();
+  const js = await Bun.file("public/app.js").text();
   c.header("Content-Type", "application/javascript; charset=utf-8");
   return c.body(js);
 });

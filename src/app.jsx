@@ -1,7 +1,9 @@
-// HopeIndexAI — React app (JSX, transpiled by Babel standalone)
+// HopeIndexAI — React app
 // Data: GDELT Project  |  Map: Leaflet  |  Font: Geist
 
-const { useState, useEffect, useRef, useMemo, useCallback } = React;
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { createRoot } from "react-dom/client";
+import L from "leaflet";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -32,7 +34,7 @@ const CONTINENTS  = ["All", "Americas", "Europe", "Middle East", "Africa", "Asia
 const SEVERITIES  = ["All", "Low", "Medium", "High", "Critical"];
 const DAY_OPTIONS = [1, 3, 7, 30];
 
-const GITHUB_URL = "https://github.com/sourrris/hopeindexai";
+const GITHUB_URL = "https://github.com/sourrrish/hopeindexai";
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
 
@@ -373,7 +375,7 @@ function EventRow({ event, selected, onClick }) {
 
 // ── AI analysis ───────────────────────────────────────────────────────────────
 
-function AiAnalysis({ event, apiKey }) {
+function AiAnalysis({ event }) {
   const [analysis, setAnalysis] = useState("");
   const [loading,  setLoading]  = useState(false);
   const [error,    setError]    = useState("");
@@ -386,7 +388,7 @@ function AiAnalysis({ event, apiKey }) {
       const res = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ apiKey, events: [event], mode: "detail" }),
+        body: JSON.stringify({ events: [event], mode: "detail" }),
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
@@ -396,7 +398,7 @@ function AiAnalysis({ event, apiKey }) {
     } finally {
       setLoading(false);
     }
-  }, [event, apiKey]);
+  }, [event]);
 
   return (
     <div className="ai-section">
@@ -427,7 +429,7 @@ function AiAnalysis({ event, apiKey }) {
 
 // ── Event detail ──────────────────────────────────────────────────────────────
 
-function EventDetail({ event, onClose, apiKey, aiReady }) {
+function EventDetail({ event, onClose, aiReady }) {
   useEffect(() => {
     const onKey = (e) => { if (e.key === "Escape") onClose(); };
     document.addEventListener("keydown", onKey);
@@ -515,7 +517,7 @@ function EventDetail({ event, onClose, apiKey, aiReady }) {
           <div className="ai-divider" />
 
           {aiReady ? (
-            <AiAnalysis event={event} apiKey={apiKey} />
+            <AiAnalysis event={event} />
           ) : (
             <div className="ai-no-key">
               <div className="ai-no-key-eyebrow">AI Geopolitical Analysis</div>
@@ -582,16 +584,15 @@ function App() {
   const [loading,  setLoading]  = useState(false);
   const [slowLoad, setSlowLoad] = useState(false);
   const [error,    setError]    = useState("");
-  const [apiKey,   setApiKey]   = useState(() => sessionStorage.getItem("hope_api_key") ?? "");
   const [aiReady,  setAiReady]  = useState(false);
 
   // Check once whether the server has an API key configured
   useEffect(() => {
     fetch("/api/ai-status")
       .then((r) => r.json())
-      .then((d) => setAiReady(d.ready || Boolean(apiKey)))
-      .catch(() => setAiReady(Boolean(apiKey)));
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+      .then((d) => setAiReady(Boolean(d.ready)))
+      .catch(() => setAiReady(false));
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -657,7 +658,7 @@ function App() {
         />
         <MapLegend />
         {selected && (
-          <EventDetail event={selected} onClose={() => setSelected(null)} apiKey={apiKey} aiReady={aiReady} />
+          <EventDetail event={selected} onClose={() => setSelected(null)} aiReady={aiReady} />
         )}
       </main>
 
@@ -673,4 +674,4 @@ function App() {
   );
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+createRoot(document.getElementById("root")).render(<App />);
